@@ -1,4 +1,7 @@
+import Link from "next/link";
+import { BookSpine } from "@/components/library/BookSpine";
 import { POT_COLORS, SHELVES_PER_BOOKCASE, WOODS, type BookcaseSummary } from "@/lib/bookcases";
+import { arrangeOnShelves } from "@/lib/books";
 
 type BookcaseProps = {
   bookcase: BookcaseSummary;
@@ -27,43 +30,66 @@ function ShelfPlant({ pot }: { pot: string }) {
   );
 }
 
+function EditBookcaseLink({ bookcaseId, name }: { bookcaseId: string; name: string }) {
+  return (
+    <Link
+      href={`/library?edit=${bookcaseId}`}
+      scroll={false}
+      aria-label={`Edit ${name} bookcase`}
+      className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px] border-ink bg-paper transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage-600"
+    >
+      <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M14.5 4.5l5 5L9 20H4v-5z" />
+        <path d="M12.5 6.5l5 5" />
+      </svg>
+    </Link>
+  );
+}
+
 export function Bookcase({ bookcase, index }: BookcaseProps) {
   const wood = WOODS[bookcase.wood];
   const pot = POT_COLORS[index % POT_COLORS.length];
-  const isEmpty = bookcase.bookCount === 0;
+  const shelves = arrangeOnShelves(bookcase.books, SHELVES_PER_BOOKCASE);
+  const isEmpty = bookcase.books.length === 0;
 
   return (
-    <section
-      aria-label={`${bookcase.name} bookcase`}
-      className="relative flex w-75 flex-none snap-start flex-col"
-    >
+    <section aria-label={`${bookcase.name} bookcase`} className="relative flex w-75 flex-none snap-start flex-col">
       <ShelfPlant pot={pot} />
 
       <div
-        className="flex h-10 items-center justify-center rounded-t-2xl rounded-b-sm border-[1.5px] border-ink px-3"
+        className="relative flex h-10 items-center justify-center rounded-t-2xl rounded-b-sm border-[1.5px] border-ink px-11"
         style={{ backgroundColor: wood.light }}
       >
         <span className="max-w-full truncate rounded-[10px] border-[1.5px] border-ink bg-paper px-4 py-0.5 font-display text-base font-semibold text-ink-strong">
           {bookcase.name}
         </span>
+        <EditBookcaseLink bookcaseId={bookcase.id} name={bookcase.name} />
       </div>
 
-      <div
-        className="relative flex flex-col gap-3 border-[1.5px] border-t-0 border-ink p-3"
-        style={{ backgroundColor: wood.dark }}
-      >
-        {Array.from({ length: SHELVES_PER_BOOKCASE }, (_, shelf) => (
+      <div className="relative flex flex-col gap-3 border-[1.5px] border-t-0 border-ink p-3" style={{ backgroundColor: wood.dark }}>
+        {shelves.map((shelf, shelfIndex) => (
           <div
-            key={shelf}
-            className="h-29.5 rounded-sm border-[1.5px] border-b-8 border-ink bg-wood-200"
+            key={shelfIndex}
+            className="flex h-29.5 items-end gap-[3px] rounded-sm border-[1.5px] border-b-8 border-ink bg-wood-200 px-2.5"
             style={{ borderBottomColor: wood.light }}
-          />
+          >
+            {shelf.map((book) => (
+              <BookSpine key={book.id} book={book} />
+            ))}
+          </div>
         ))}
 
         {isEmpty && (
           <div className="absolute inset-x-6 top-35 flex flex-col items-center gap-2 rounded-[1.125rem] border-[1.5px] border-ink bg-paper p-4.5 text-center">
             <strong className="font-display text-[17px] font-semibold text-ink-strong">This bookcase is still quiet</strong>
-            <span className="text-[13px] leading-relaxed text-ink-soft">The PDF books you upload will stand here.</span>
+            <span className="text-[13px] leading-relaxed text-ink-soft">Shelve your first PDF book here.</span>
+            <Link
+              href={`/library?new=book&bookcase=${bookcase.id}`}
+              scroll={false}
+              className="flex min-h-10 items-center rounded-full bg-sage-100 px-4 text-[13px] font-extrabold text-sage-700 hover:bg-sage-200"
+            >
+              Add a book
+            </Link>
           </div>
         )}
       </div>

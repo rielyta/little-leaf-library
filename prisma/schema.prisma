@@ -28,6 +28,7 @@ model User {
   sessions        Session[]
   accounts        Account[]
   bookcases       Bookcase[]
+  books           Book[]
 
   @@map("user")
 }
@@ -42,10 +43,34 @@ model Bookcase {
   updatedAt DateTime @updatedAt
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  books     Book[]
 
   @@unique([userId, name])
   @@index([userId, position])
   @@map("bookcase")
+}
+
+model Book {
+  id           String   @id @default(cuid())
+  title        String
+  author       String?
+  pageCount    Int
+  fileSize     Int
+  fileKey      String   @unique
+  spineColor   String
+  position     Int
+  lastReadPage Int      @default(0)
+  bookcaseId   String
+  userId       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bookcase     Bookcase @relation(fields: [bookcaseId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookcaseId, position])
+  @@index([userId])
+  @@map("book")
 }
 
 model Session {

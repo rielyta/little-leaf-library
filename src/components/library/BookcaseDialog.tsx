@@ -1,14 +1,27 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef, useState } from "react";
-import { createBookcase, type CreateBookcaseState } from "@/app/(app)/library/actions";
+import { useActionState, useState } from "react";
+import { createBookcase, updateBookcase, type BookcaseFormState } from "@/app/(app)/library/actions";
 import { Button } from "@/components/ui/Button";
+import { FormAlert } from "@/components/ui/FormAlert";
+import { Modal, ModalCancelButton } from "@/components/ui/Modal";
 import { TextField } from "@/components/ui/TextField";
 import { BOOKCASE_NAME_MAX_LENGTH, WOOD_KEYS, WOODS, type WoodKey } from "@/lib/bookcases";
 import { cn } from "@/lib/cn";
 
-const initialState: CreateBookcaseState = {};
+const initialState: BookcaseFormState = {};
+
+type EditableBookcase = {
+  id: string;
+  name: string;
+  wood: WoodKey;
+};
+
+type BookcaseDialogProps = {
+  open: boolean;
+  bookcase?: EditableBookcase;
+};
 
 function BookcasePreview({ name, wood }: { name: string; wood: WoodKey }) {
   const colors = WOODS[wood];
@@ -36,48 +49,24 @@ function BookcasePreview({ name, wood }: { name: string; wood: WoodKey }) {
   );
 }
 
-export function NewBookcaseDialog({ open }: { open: boolean }) {
+export function BookcaseDialog({ open, bookcase }: BookcaseDialogProps) {
   const router = useRouter();
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const [state, formAction, pending] = useActionState(createBookcase, initialState);
-  const [name, setName] = useState("");
-  const [wood, setWood] = useState<WoodKey>("honey");
+  const isEditing = Boolean(bookcase);
+  const action = bookcase ? updateBookcase.bind(null, bookcase.id) : createBookcase;
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-
-    if (open && dialog && !dialog.open) {
-      dialog.showModal();
-    }
-  }, [open]);
-
-  function close() {
-    router.replace("/library", { scroll: false });
-  }
+  const [state, formAction, pending] = useActionState(action, initialState);
+  const [name, setName] = useState(bookcase?.name ?? "");
+  const [wood, setWood] = useState<WoodKey>(bookcase?.wood ?? "honey");
 
   return (
-    <dialog
-      ref={dialogRef}
-      onClose={close}
-      aria-labelledby="new-bookcase-title"
-      className="m-auto w-[min(40rem,calc(100%-2rem))] rounded-[1.875rem] border-[1.5px] border-ink bg-paper p-7 text-ink shadow-[0_8px_0_#EBB4C0] backdrop:bg-ink-strong/40"
+    <Modal
+      open={open}
+      title={isEditing ? "Edit bookcase" : "New bookcase"}
+      titleId="bookcase-dialog-title"
+      onClose={() => router.replace("/library", { scroll: false })}
     >
       <form action={formAction} className="flex flex-col gap-5">
-        <div className="flex items-center justify-between">
-          <h2 id="new-bookcase-title" className="font-display text-[26px] font-semibold text-ink-strong">
-            New bookcase
-          </h2>
-          <button
-            type="button"
-            onClick={() => dialogRef.current?.close()}
-            aria-label="Close"
-            className="flex size-11 items-center justify-center rounded-full border-[1.5px] border-line hover:bg-white"
-          >
-            <svg viewBox="0 0 18 18" className="size-4.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <path d="M4 4l10 10M14 4L4 14" />
-            </svg>
-          </button>
-        </div>
+        <FormAlert message={state.formError ?? null} />
 
         <div className="flex flex-wrap gap-6">
           <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-4.5">
@@ -98,18 +87,11 @@ export function NewBookcaseDialog({ open }: { open: boolean }) {
                 <label
                   key={key}
                   className={cn(
-                    "flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl border-[1.5px] px-3.5 text-sm font-bold transition-colors",
+                    "flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl border-[1.5px] px-3.5 text-sm font-bold transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-sage-600",
                     wood === key ? "border-ink bg-blush-50" : "border-line bg-white hover:bg-paper",
                   )}
                 >
-                  <input
-                    type="radio"
-                    name="wood"
-                    value={key}
-                    checked={wood === key}
-                    onChange={() => setWood(key)}
-                    className="sr-only"
-                  />
+                  <input type="radio" name="wood" value={key} checked={wood === key} onChange={() => setWood(key)} className="sr-only" />
                   <span className="size-6.5 rounded-lg border-[1.5px] border-ink" style={{ backgroundColor: WOODS[key].light }} />
                   {WOODS[key].label}
                 </label>
@@ -122,14 +104,12 @@ export function NewBookcaseDialog({ open }: { open: boolean }) {
         </div>
 
         <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => dialogRef.current?.close()} disabled={pending}>
-            Cancel
-          </Button>
+          <ModalCancelButton disabled={pending} />
           <Button type="submit" disabled={pending}>
-            {pending ? "Building..." : "Create bookcase"}
+            {pending ? "Saving..." : isEditing ? "Save changes" : "Create bookcase"}
           </Button>
         </div>
       </form>
-    </dialog>
+    </Modal>
   );
 }

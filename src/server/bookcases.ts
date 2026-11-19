@@ -1,27 +1,56 @@
 import "server-only";
-import type { BookcaseSummary } from "@/lib/bookcases";
+import type { BookcaseSummary, WoodKey } from "@/lib/bookcases";
 import { db } from "@/server/db";
 
+type BookcaseData = {
+  name: string;
+  wood: WoodKey;
+};
+
 export async function listBookcases(userId: string): Promise<BookcaseSummary[]> {
-  const bookcases = await db.bookcase.findMany({
+  return db.bookcase.findMany({
     where: { userId },
     orderBy: { position: "asc" },
-    select: { id: true, name: true, wood: true },
+    select: {
+      id: true,
+      name: true,
+      wood: true,
+      books: {
+        orderBy: { position: "asc" },
+        select: {
+          id: true,
+          title: true,
+          author: true,
+          pageCount: true,
+          spineColor: true,
+          lastReadPage: true,
+        },
+      },
+    },
   });
-
-  return bookcases.map((bookcase) => ({ ...bookcase, bookCount: 0 }));
 }
 
-export async function bookcaseNameExists(userId: string, name: string) {
+export async function findOwnedBookcase(userId: string, bookcaseId: string) {
+  return db.bookcase.findFirst({
+    where: { id: bookcaseId, userId },
+    select: { id: true },
+  });
+}
+
+export async function bookcaseNameExists(userId: string, name: string, excludeId?: string) {
   const existing = await db.bookcase.findFirst({
-    where: { userId, name: { equals: name, mode: "insensitive" } },
+    where: {
+      userId,
+      name: { equals: name, mode: "insensitive" },
+      ...(excludeId && { NOT: { id: excludeId } }),
+    },
     select: { id: true },
   });
 
   return Boolean(existing);
 }
 
-export async function createBookcaseForUser(userId: string, data: { name: string; wood: BookcaseSummary["wood"] }) {
+export async function createBookcaseForUser(userId: string, data: BookcaseData) {
   const { _max } = await db.bookcase.aggregate({
     where: { userId },
     _max: { position: true },
@@ -31,4 +60,13 @@ export async function createBookcaseForUser(userId: string, data: { name: string
     data: { ...data, userId, position: (_max.position ?? -1) + 1 },
     select: { id: true },
   });
+}
+
+export async function updateBookcaseForUser(userId: string, bookcaseId: string, data: BookcaseData) {
+  const { count } = await db.bookcase.updateMany({
+    where: { id: bookcaseId, userId },
+    data,
+  });
+
+  return count > 0;
 }

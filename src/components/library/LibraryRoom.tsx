@@ -21,7 +21,7 @@ function ArrowButton({ direction, disabled, onClick }: { direction: "prev" | "ne
       disabled={disabled}
       aria-label={direction === "prev" ? "Previous bookcase" : "Next bookcase"}
       className={cn(
-        "absolute top-[46%] z-10 flex size-13 items-center justify-center rounded-full border-[1.5px] border-ink bg-paper transition-opacity disabled:opacity-40",
+        "absolute top-[46%] z-40 flex size-13 items-center justify-center rounded-full border-[1.5px] border-ink bg-paper transition-opacity disabled:opacity-40",
         direction === "prev" ? "left-5" : "right-5",
       )}
     >
@@ -78,7 +78,7 @@ export function LibraryRoom({ bookcases }: LibraryRoomProps) {
             )}
           >
             {bookcase.name}
-            <span className="rounded-full bg-white px-2 text-xs font-extrabold text-ink-soft">{bookcase.bookCount}</span>
+            <span className="rounded-full bg-white px-2 text-xs font-extrabold text-ink-soft">{bookcase.books.length}</span>
           </button>
         ))}
       </nav>

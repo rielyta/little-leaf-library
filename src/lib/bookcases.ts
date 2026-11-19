@@ -1,3 +1,5 @@
+import type { BookOnShelf } from "@/lib/books";
+
 export const WOOD_KEYS = ["honey", "cream", "mint"] as const;
 
 export type WoodKey = (typeof WOOD_KEYS)[number];
@@ -18,5 +20,5 @@ export type BookcaseSummary = {
   id: string;
   name: string;
   wood: WoodKey;
-  bookCount: number;
+  books: BookOnShelf[];
 };
