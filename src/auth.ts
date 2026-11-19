@@ -3,8 +3,8 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { username } from "better-auth/plugins";
-import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/lib/validation/username";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/validation/auth";
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/lib/validation/username";
 import { db } from "@/server/db";
 import { sendEmail } from "@/server/email";
 import { resetPasswordEmail } from "@/server/emails/reset-password";
@@ -20,6 +20,12 @@ const socialProviders =
     ? { google: { clientId: googleClientId, clientSecret: googleClientSecret } }
     : {};
 
+function deliver(to: string, email: { subject: string; html: string; text: string }) {
+  void sendEmail({ to, ...email }).catch((error) => {
+    console.error(`[auth] Could not send "${email.subject}"`, error);
+  });
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: "postgresql" }),
 
@@ -30,11 +36,7 @@ export const auth = betterAuth({
     resetPasswordTokenExpiresIn: RESET_TOKEN_LIFETIME_SECONDS,
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      const email = resetPasswordEmail({ name: user.name, url });
-
-      void sendEmail({ to: user.email, ...email }).catch((error) => {
-        console.error("[auth] Could not send reset password email", error);
-      });
+      deliver(user.email, resetPasswordEmail({ name: user.name, url }));
     },
   },
 
