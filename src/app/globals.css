@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #fbf6ee;
+  --color-paper: #fffdf8;
+
+  --color-ink: #5a4636;
+  --color-ink-strong: #4a3929;
+  --color-ink-soft: #6e5a4a;
+
+  --color-blush-50: #fdf1f3;
+  --color-blush-100: #f6d6dc;
+  --color-blush-200: #f2cdd5;
+  --color-blush-300: #e7b9c4;
+  --color-blush-400: #f2b8c6;
+  --color-blush-700: #b06a7e;
+
+  --color-mist-50: #eef5f8;
+  --color-mist-100: #cfe3ea;
+  --color-mist-200: #a9ccd8;
+  --color-mist-700: #44565e;
+  --color-mist-800: #3e4f57;
+
+  --color-sage-50: #eff6ef;
+  --color-sage-100: #dcebdd;
+  --color-sage-200: #cfe3d1;
+  --color-sage-300: #bfd8c2;
+  --color-sage-400: #9cc5a1;
+  --color-sage-600: #4f7a5b;
+  --color-sage-700: #3d6148;
+
+  --color-wood-100: #efe3d3;
+  --color-wood-200: #ead7c3;
+  --color-wood-300: #d9b99b;
+  --color-wood-400: #c9a27e;
+  --color-wood-500: #b98e6b;
+
+  --color-butter: #f3e3c3;
+}
+
+@theme inline {
+  --font-display: var(--font-fredoka), ui-rounded, sans-serif;
+  --font-sans: var(--font-nunito), system-ui, sans-serif;
+  --font-serif: var(--font-lora), Georgia, serif;
+}
+
+@utility page-container {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 75rem;
+  padding-inline: 1.5rem;
+
+  @media (width >= 48rem) {
+    padding-inline: 2rem;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
