@@ -4,8 +4,13 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { username } from "better-auth/plugins";
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/lib/validation/username";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/validation/auth";
 import { db } from "@/server/db";
+import { sendEmail } from "@/server/email";
+import { resetPasswordEmail } from "@/server/emails/reset-password";
 import { generateUniqueUsername } from "@/server/username";
+
+const RESET_TOKEN_LIFETIME_SECONDS = 60 * 60;
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -20,7 +25,17 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    minPasswordLength: 8,
+    minPasswordLength: PASSWORD_MIN_LENGTH,
+    maxPasswordLength: PASSWORD_MAX_LENGTH,
+    resetPasswordTokenExpiresIn: RESET_TOKEN_LIFETIME_SECONDS,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      const email = resetPasswordEmail({ name: user.name, url });
+
+      void sendEmail({ to: user.email, ...email }).catch((error) => {
+        console.error("[auth] Could not send reset password email", error);
+      });
+    },
   },
 
   socialProviders,
