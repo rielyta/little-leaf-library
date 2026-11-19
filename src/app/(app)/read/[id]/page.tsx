@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Reader } from "@/components/reader/Reader";
+import { listBookmarkPages } from "@/server/bookmarks";
 import { getReadableBook } from "@/server/books";
+import { listHighlights } from "@/server/highlights";
 import { requireSession } from "@/server/session";
 
 type ReadPageProps = {
@@ -25,6 +27,11 @@ export default async function ReadPage({ params }: ReadPageProps) {
   if (!book) {
     notFound();
   }
+
+  const [bookmarks, highlights] = await Promise.all([
+    listBookmarkPages(user.id, book.id),
+    listHighlights(user.id, book.id),
+  ]);
 
   const byline = [book.author, `${book.bookcase.name} bookcase`].filter(Boolean).join(", ");
 
@@ -52,6 +59,8 @@ export default async function ReadPage({ params }: ReadPageProps) {
         fileUrl={`/api/books/${book.id}/file`}
         pageCount={book.pageCount}
         initialPage={book.lastReadPage || 1}
+        initialBookmarks={bookmarks}
+        initialHighlights={highlights}
       />
     </div>
   );

@@ -13,22 +13,31 @@ enum Wood {
   mint
 }
 
+enum HighlightColor {
+  pink
+  blue
+  green
+  yellow
+}
+
 model User {
-  id              String     @id
+  id              String      @id
   name            String
-  email           String     @unique
-  emailVerified   Boolean    @default(false)
+  email           String      @unique
+  emailVerified   Boolean     @default(false)
   image           String?
-  username        String?    @unique
+  username        String?     @unique
   displayUsername String?
-  avatar          String     @default("cat-0")
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  avatar          String      @default("cat-0")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   sessions        Session[]
   accounts        Account[]
   bookcases       Bookcase[]
   books           Book[]
+  bookmarks       Bookmark[]
+  highlights      Highlight[]
 
   @@map("user")
 }
@@ -51,26 +60,63 @@ model Bookcase {
 }
 
 model Book {
-  id           String   @id @default(cuid())
+  id           String      @id @default(cuid())
   title        String
   author       String?
   pageCount    Int
   fileSize     Int
-  fileKey      String   @unique
+  fileKey      String      @unique
   spineColor   String
   position     Int
-  lastReadPage Int      @default(0)
+  lastReadPage Int         @default(0)
   bookcaseId   String
   userId       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
-  bookcase     Bookcase @relation(fields: [bookcaseId], references: [id], onDelete: Cascade)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookcase     Bookcase    @relation(fields: [bookcaseId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookmarks    Bookmark[]
+  highlights   Highlight[]
 
   @@index([bookcaseId, position])
   @@index([userId])
   @@map("book")
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  page      Int
+  bookId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, page])
+  @@index([userId])
+  @@map("bookmark")
+}
+
+model Highlight {
+  id        String         @id @default(cuid())
+  page      Int
+  color     HighlightColor
+  text      String
+  rects     Json
+  note      String?
+  bookId    String
+  userId    String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  book      Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookId, page])
+  @@index([userId])
+  @@map("highlight")
 }
 
 model Session {

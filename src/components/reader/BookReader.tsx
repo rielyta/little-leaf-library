@@ -1,16 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { Document, Page, pdfjs } from "react-pdf";
+import { Document, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 import { saveReadingPosition } from "@/app/(app)/read/[id]/actions";
+import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
+import { HighlightMenu, NoteEditor, SelectionToolbar } from "@/components/reader/HighlightToolbars";
+import { NotesPanel } from "@/components/reader/NotesPanel";
+import { findReaderPage, PaperPage, type PageSide } from "@/components/reader/PaperPage";
+import { ArrowButton, FullscreenIcon, NotesIcon, ToolbarButton, ZoomControls } from "@/components/reader/ReaderControls";
 import { ReaderStatus } from "@/components/reader/ReaderStatus";
+import { TurningLeaf } from "@/components/reader/TurningLeaf";
+import { useBookmarks } from "@/components/reader/useBookmarks";
+import { useFullscreen } from "@/components/reader/useFullscreen";
+import { useHighlights } from "@/components/reader/useHighlights";
 import { usePageImages } from "@/components/reader/usePageImages";
 import { usePageTurn } from "@/components/reader/usePageTurn";
+import { useTextSelection, type FloatingAnchor, type PendingSelection } from "@/components/reader/useTextSelection";
+import { useZoom } from "@/components/reader/useZoom";
 import { useElementSize } from "@/hooks/useElementSize";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/cn";
+import { DEFAULT_COMMENT_COLOR, rectsContainPoint, type Highlight } from "@/lib/highlights";
 import {
   clampPage,
   computeLayers,
@@ -20,7 +32,6 @@ import {
   pageLabel,
   spreadPages,
   viewForPage,
-  type Leaf,
   type TurnDirection,
 } from "@/lib/reader";
 
@@ -41,18 +52,15 @@ const BOOK_FRAME_INSET = BOOK_PADDING + BOOK_BORDER;
 const SAVE_DELAY_MS = 800;
 const DRAG_COMPLETE_THRESHOLD = 0.25;
 const CLICK_TOLERANCE_PX = 4;
-const TURN_TRANSITION = "transform 650ms cubic-bezier(0.45, 0.05, 0.35, 1)";
-const ZOOM_LEVELS = [1, 1.25, 1.5, 1.75, 2];
-const ZOOM_STORAGE_KEY = "little-leaf-reader-zoom";
 
 export type BookReaderProps = {
   bookId: string;
   fileUrl: string;
   pageCount: number;
   initialPage: number;
+  initialBookmarks: number[];
+  initialHighlights: Highlight[];
 };
-
-type PageSide = "left" | "right" | "single";
 
 type DragState = {
   direction: TurnDirection;
@@ -60,196 +68,16 @@ type DragState = {
   moved: boolean;
 };
 
-const spineShadow: Record<PageSide, string> = {
-  left: "shadow-[inset_-26px_0_28px_-24px_rgba(90,70,54,0.45)]",
-  right: "shadow-[inset_26px_0_28px_-24px_rgba(90,70,54,0.45)]",
-  single: "shadow-[inset_14px_0_18px_-16px_rgba(90,70,54,0.4)]",
+type ActiveHighlight = {
+  id: string;
+  anchor: FloatingAnchor;
 };
 
-const pageCorners: Record<PageSide, string> = {
-  left: "rounded-l-lg",
-  right: "rounded-r-lg",
-  single: "rounded-r-xl rounded-l-sm",
-};
+type NoteEditorState =
+  | { kind: "new"; selection: PendingSelection }
+  | { kind: "edit"; highlightId: string; anchor: FloatingAnchor };
 
-function readStoredZoom() {
-  try {
-    const stored = Number(window.localStorage.getItem(ZOOM_STORAGE_KEY));
-    return ZOOM_LEVELS.includes(stored) ? stored : 1;
-  } catch {
-    return 1;
-  }
-}
-
-function storeZoom(zoom: number) {
-  try {
-    window.localStorage.setItem(ZOOM_STORAGE_KEY, String(zoom));
-  } catch {
-    return;
-  }
-}
-
-type PaperPageProps = {
-  pageNumber: number | null;
-  image: string | undefined;
-  width: number;
-  height: number;
-  side: PageSide;
-  withTextLayer?: boolean;
-};
-
-function PaperPage({ pageNumber, image, width, height, side, withTextLayer = false }: PaperPageProps) {
-  return (
-    <div className={cn("relative overflow-hidden bg-paper", pageCorners[side])} style={{ width, height }}>
-      {image && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={image} alt="" draggable={false} className="absolute inset-0 size-full select-none" />
-      )}
-
-      {pageNumber && !image && (
-        <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
-          <span className="size-8 animate-pulse rounded-full bg-wood-100" />
-        </div>
-      )}
-
-      {pageNumber && withTextLayer && (
-        <div className="absolute inset-0 [&_.react-pdf\_\_Page]:!bg-transparent">
-          <Page
-            pageNumber={pageNumber}
-            width={width}
-            renderMode="none"
-            renderTextLayer
-            renderAnnotationLayer={false}
-            loading={null}
-          />
-        </div>
-      )}
-
-      <div aria-hidden="true" className={cn("pointer-events-none absolute inset-0", spineShadow[side])} />
-    </div>
-  );
-}
-
-type TurningLeafProps = {
-  leaf: Leaf;
-  images: ReadonlyMap<number, string>;
-  width: number;
-  height: number;
-  progress: number;
-  settling: boolean;
-  onTransitionEnd: () => void;
-};
-
-function TurningLeaf({ leaf, images, width, height, progress, settling, onTransitionEnd }: TurningLeafProps) {
-  const frontSide: PageSide = leaf.side === "left" ? "left" : leaf.side === "right" ? "right" : "single";
-  const backSide: PageSide = leaf.side === "left" ? "right" : "left";
-  const shade = Math.sin(progress * Math.PI) * 0.22;
-
-  const style: CSSProperties = {
-    width,
-    height,
-    left: leaf.side === "right" ? width : 0,
-    transformOrigin: `${leaf.origin} center`,
-    transform: `rotateY(${leaf.angle}deg)`,
-    transition: settling ? TURN_TRANSITION : "none",
-  };
-
-  return (
-    <div
-      aria-hidden="true"
-      onTransitionEnd={onTransitionEnd}
-      className="pointer-events-none absolute top-0 z-10 [transform-style:preserve-3d] [will-change:transform]"
-      style={style}
-    >
-      <div className="absolute inset-0 [backface-visibility:hidden]">
-        <PaperPage
-          pageNumber={leaf.front}
-          image={leaf.front ? images.get(leaf.front) : undefined}
-          width={width}
-          height={height}
-          side={frontSide}
-        />
-        <div className="absolute inset-0 bg-gradient-to-l from-ink-strong to-transparent" style={{ opacity: shade }} />
-      </div>
-      <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
-        <PaperPage
-          pageNumber={leaf.back}
-          image={leaf.back ? images.get(leaf.back) : undefined}
-          width={width}
-          height={height}
-          side={backSide}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ArrowButton({ direction, disabled, onClick, className }: { direction: TurnDirection; disabled: boolean; onClick: () => void; className?: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={direction === "next" ? "Next page" : "Previous page"}
-      className={cn(
-        "flex size-13 flex-none items-center justify-center rounded-full border-[1.5px] border-ink bg-paper shadow-[0_4px_0_#CFE3EA] transition-opacity disabled:opacity-40",
-        className,
-      )}
-    >
-      <svg viewBox="0 0 22 22" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d={direction === "next" ? "M8.5 5l6 6-6 6" : "M13.5 5l-6 6 6 6"} />
-      </svg>
-    </button>
-  );
-}
-
-function ZoomControls({ zoom, onChange }: { zoom: number; onChange: (zoom: number) => void }) {
-  const index = ZOOM_LEVELS.indexOf(zoom);
-
-  return (
-    <div role="group" aria-label="Zoom" className="flex flex-none items-center rounded-full border-[1.5px] border-line bg-white">
-      <button
-        type="button"
-        onClick={() => onChange(ZOOM_LEVELS[index - 1])}
-        disabled={index <= 0}
-        aria-label="Zoom out"
-        className="flex size-10 items-center justify-center rounded-full text-lg font-extrabold disabled:opacity-35"
-      >
-        −
-      </button>
-      <button type="button" onClick={() => onChange(1)} aria-label="Fit page to screen" className="min-w-13 text-center text-sm font-extrabold">
-        {zoom === 1 ? "Fit" : `${Math.round(zoom * 100)}%`}
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange(ZOOM_LEVELS[index + 1])}
-        disabled={index >= ZOOM_LEVELS.length - 1}
-        aria-label="Zoom in"
-        className="flex size-10 items-center justify-center rounded-full text-lg font-extrabold disabled:opacity-35"
-      >
-        +
-      </button>
-    </div>
-  );
-}
-
-function FullscreenButton({ active, onClick }: { active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={active ? "Exit full screen" : "Full screen"}
-      className="flex size-10 flex-none items-center justify-center rounded-full border-[1.5px] border-line bg-white hover:bg-paper"
-    >
-      <svg viewBox="0 0 20 20" className="size-4.5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d={active ? "M7 3v4H3M13 3v4h4M7 17v-4H3M13 17v-4h4" : "M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4"} />
-      </svg>
-    </button>
-  );
-}
-
-export function BookReader({ bookId, fileUrl, pageCount, initialPage }: BookReaderProps) {
+export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBookmarks, initialHighlights }: BookReaderProps) {
   const isWide = useMediaQuery("(min-width: 1024px)");
   const mode = isWide ? "double" : "single";
   const columns = mode === "double" ? 2 : 1;
@@ -257,17 +85,23 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage }: BookRead
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [anchorPage, setAnchorPage] = useState(() => clampPage(initialPage, pageCount));
   const [pageRatio, setPageRatio] = useState(DEFAULT_PAGE_RATIO);
-  const [zoom, setZoom] = useState(readStoredZoom);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [activeHighlight, setActiveHighlight] = useState<ActiveHighlight | null>(null);
+  const [noteEditor, setNoteEditor] = useState<NoteEditorState | null>(null);
   const [stageRef, stageSize] = useElementSize<HTMLDivElement>();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const bookRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const hasMountedRef = useRef(false);
 
-  const canFullscreen = document.fullscreenEnabled;
-  const isZoomed = zoom > 1;
+  const { zoom, canZoomIn, canZoomOut, zoomIn, zoomOut, resetZoom } = useZoom();
+  const fullscreen = useFullscreen<HTMLDivElement>();
+  const bookmarks = useBookmarks(bookId, initialBookmarks);
+  const highlights = useHighlights(bookId, initialHighlights);
+
   const view = viewForPage(anchorPage, mode);
   const maxView = lastView(mode, pageCount);
+  const currentSpread = spreadPages(view, mode, pageCount);
+  const visiblePages = [currentSpread.left, currentSpread.right].filter((page): page is number => page !== null);
 
   const availableWidth = Math.max(0, stageSize.width - BOOK_FRAME_INSET * 2);
   const availableHeight = Math.max(0, stageSize.height - BOOK_FRAME_INSET * 2);
@@ -284,23 +118,40 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage }: BookRead
     onTurned: (direction: TurnDirection) => setAnchorPage(firstPageOfView(view + (direction === "next" ? 1 : -1), mode)),
   });
 
+  const isSettled = turn === null;
+  const { selection, clear: clearSelection } = useTextSelection(bookRef, isSettled);
+
   const layers = computeLayers(view, mode, pageCount, turn);
   const currentFurthest = furthestPage(view, mode, pageCount);
   const progressPercent = Math.round((currentFurthest / pageCount) * 100);
-  const isSettled = turn === null;
+  const findHighlight = (id: string) => highlights.highlights.find((highlight) => highlight.id === id);
+  const activeHighlightData = activeHighlight ? findHighlight(activeHighlight.id) : undefined;
+  const editingHighlight = noteEditor?.kind === "edit" ? findHighlight(noteEditor.highlightId) : undefined;
+  const readerError = bookmarks.error ?? highlights.error;
+  const notesCount = bookmarks.bookmarks.length + highlights.highlights.length;
 
-  function changeZoom(next: number) {
-    setZoom(next);
-    storeZoom(next);
+  function closeFloatingUi() {
+    setActiveHighlight(null);
+    setNoteEditor(null);
   }
 
-  function toggleFullscreen() {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void containerRef.current?.requestFullscreen();
+  function goToPage(page: number) {
+    setAnchorPage(clampPage(page, pageCount));
+
+    if (!isWide) {
+      setIsNotesOpen(false);
     }
   }
+
+  function openNote(highlightId: string, anchor: FloatingAnchor) {
+    setActiveHighlight(null);
+    setNoteEditor({ kind: "edit", highlightId, anchor });
+  }
+
+  useEffect(() => {
+    setActiveHighlight(null);
+    setNoteEditor(null);
+  }, [view, mode, zoom]);
 
   useEffect(() => {
     const nearbyViews = [view, view + 1, view - 1, view + 2].filter((candidate) => candidate >= 0 && candidate <= maxView);
@@ -313,15 +164,6 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage }: BookRead
 
     void request(pages);
   }, [view, mode, pageCount, maxView, request]);
-
-  useEffect(() => {
-    function handleFullscreenChange() {
-      setIsFullscreen(document.fullscreenElement === containerRef.current);
-    }
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
 
   useEffect(() => {
     if (!hasMountedRef.current) {
@@ -344,24 +186,57 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage }: BookRead
         return;
       }
 
-      const zoomIndex = ZOOM_LEVELS.indexOf(zoom);
+      const key = event.key.toLowerCase();
 
-      if (event.key === "ArrowRight") {
+      if (key === "escape") {
+        closeFloatingUi();
+        clearSelection();
+      } else if (key === "arrowright") {
         animate("next");
-      } else if (event.key === "ArrowLeft") {
+      } else if (key === "arrowleft") {
         animate("prev");
-      } else if ((event.key === "+" || event.key === "=") && zoomIndex < ZOOM_LEVELS.length - 1) {
-        changeZoom(ZOOM_LEVELS[zoomIndex + 1]);
-      } else if (event.key === "-" && zoomIndex > 0) {
-        changeZoom(ZOOM_LEVELS[zoomIndex - 1]);
-      } else if (event.key.toLowerCase() === "f" && canFullscreen) {
-        toggleFullscreen();
+      } else if (key === "+" || key === "=") {
+        zoomIn();
+      } else if (key === "-") {
+        zoomOut();
+      } else if (key === "f" && fullscreen.canFullscreen) {
+        fullscreen.toggleFullscreen();
+      } else if (key === "b" && isSettled && visiblePages[0]) {
+        bookmarks.toggle(visiblePages[0]);
+      } else if (key === "n") {
+        setIsNotesOpen((open) => !open);
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
+
+  function handleBookPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (window.getSelection()?.isCollapsed === false) {
+      setActiveHighlight(null);
+      return;
+    }
+
+    const readerPage = findReaderPage(event.target as Node);
+
+    if (!readerPage) {
+      setActiveHighlight(null);
+      return;
+    }
+
+    const bounds = readerPage.element.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / bounds.width;
+    const y = (event.clientY - bounds.top) / bounds.height;
+    const hit = [...(highlights.byPage.get(readerPage.pageNumber) ?? [])]
+      .reverse()
+      .find((highlight) => rectsContainPoint(highlight.rects, x, y));
+
+    setNoteEditor(null);
+    setActiveHighlight(
+      hit ? { id: hit.id, anchor: { x: event.clientX, top: event.clientY - 8, bottom: event.clientY + 8 } } : null,
+    );
+  }
 
   function handleEdgePointerDown(direction: TurnDirection, event: PointerEvent<HTMLDivElement>) {
     if (turn || !canTurn(direction)) {
@@ -410,107 +285,227 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage }: BookRead
     };
   }
 
-  function pageProps(pageNumber: number | null, side: PageSide) {
-    return {
-      pageNumber,
-      side,
-      image: pageNumber ? images.get(pageNumber) : undefined,
-      width: pageWidth,
-      height: pageHeight,
-      withTextLayer: isSettled,
-    };
+  function renderPage(pageNumber: number | null, side: PageSide) {
+    return (
+      <PaperPage
+        pageNumber={pageNumber}
+        side={side}
+        image={pageNumber ? images.get(pageNumber) : undefined}
+        highlights={pageNumber ? highlights.byPage.get(pageNumber) : undefined}
+        width={pageWidth}
+        height={pageHeight}
+        withTextLayer={isSettled}
+        onOpenNote={isSettled ? openNote : undefined}
+      >
+        {pageNumber && isSettled && (
+          <BookmarkRibbon page={pageNumber} side={side} active={bookmarks.isBookmarked(pageNumber)} onToggle={bookmarks.toggle} />
+        )}
+      </PaperPage>
+    );
   }
 
   return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 flex-col bg-sage-50">
-      <Document
-        file={fileUrl}
-        options={DOCUMENT_OPTIONS}
-        onLoadSuccess={async (loadedPdf) => {
-          const firstPage = await loadedPdf.getPage(1);
-          const viewport = firstPage.getViewport({ scale: 1 });
-          setPageRatio(viewport.width / viewport.height);
-          setPdf(loadedPdf);
-        }}
-        loading={<ReaderStatus message="Opening your book..." />}
-        error={<ReaderStatus message="We could not open this book. Please try again later." />}
-        className="flex min-h-0 flex-1 items-center gap-4 px-3 pt-3 lg:px-5"
-      >
-        <ArrowButton direction="prev" disabled={view === 0} onClick={() => animate("prev")} className="hidden lg:flex" />
-
-        <div
-          ref={stageRef}
-          className={cn("flex h-full min-w-0 flex-1", isZoomed ? "scrollbar-none overflow-auto" : "overflow-hidden")}
+    <div ref={fullscreen.ref} className="relative flex min-h-0 flex-1 bg-sage-50">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Document
+          file={fileUrl}
+          options={DOCUMENT_OPTIONS}
+          onLoadSuccess={async (loadedPdf) => {
+            const firstPage = await loadedPdf.getPage(1);
+            const viewport = firstPage.getViewport({ scale: 1 });
+            setPageRatio(viewport.width / viewport.height);
+            setPdf(loadedPdf);
+          }}
+          loading={<ReaderStatus message="Opening your book..." />}
+          error={<ReaderStatus message="We could not open this book. Please try again later." />}
+          className="flex min-h-0 flex-1 items-center gap-4 px-3 pt-3 lg:px-5"
         >
-          {pageWidth > 0 && (
-            <div
-              className="m-auto flex-none rounded-[14px] border-2 border-ink bg-wood-500 shadow-[0_18px_30px_-18px_#5A4636]"
-              style={{ padding: BOOK_PADDING }}
-            >
-              <div className="relative flex [perspective:2400px]" style={{ width: pageWidth * columns, height: pageHeight }}>
-                {mode === "double" ? (
-                  <>
-                    <PaperPage {...pageProps(layers.left, "left")} />
-                    <PaperPage {...pageProps(layers.right, "right")} />
-                  </>
-                ) : (
-                  <PaperPage {...pageProps(layers.right, "single")} />
-                )}
+          <ArrowButton direction="prev" disabled={view === 0} onClick={() => animate("prev")} className="hidden lg:flex" />
 
-                {layers.leaf && turn && (
-                  <TurningLeaf
-                    leaf={layers.leaf}
-                    images={images}
-                    width={pageWidth}
-                    height={pageHeight}
-                    progress={turn.progress}
-                    settling={turn.settling}
-                    onTransitionEnd={handleTransitionEnd}
-                  />
-                )}
-
+          <div
+            ref={stageRef}
+            onScroll={closeFloatingUi}
+            className={cn("flex h-full min-w-0 flex-1", zoom > 1 ? "scrollbar-none overflow-auto" : "overflow-hidden")}
+          >
+            {pageWidth > 0 && (
+              <div
+                className="m-auto flex-none rounded-[14px] border-2 border-ink bg-wood-500 shadow-[0_18px_30px_-18px_#5A4636]"
+                style={{ padding: BOOK_PADDING }}
+              >
                 <div
-                  {...edgeZoneProps("prev")}
-                  aria-hidden="true"
-                  className={cn("group absolute inset-y-0 left-0 z-20 w-11 touch-none", view > 0 ? "cursor-grab active:cursor-grabbing" : "cursor-default")}
+                  ref={bookRef}
+                  onPointerUp={handleBookPointerUp}
+                  className="relative flex [perspective:2400px]"
+                  style={{ width: pageWidth * columns, height: pageHeight }}
                 >
-                  <span className="absolute left-1 top-1/2 h-16 w-1.5 -translate-y-1/2 rounded-full bg-wood-200 opacity-60 transition-opacity group-hover:opacity-100" />
-                </div>
+                  {mode === "double" ? (
+                    <>
+                      {renderPage(layers.left, "left")}
+                      {renderPage(layers.right, "right")}
+                    </>
+                  ) : (
+                    renderPage(layers.right, "single")
+                  )}
 
-                <div
-                  {...edgeZoneProps("next")}
-                  aria-hidden="true"
-                  className={cn("group absolute inset-y-0 right-0 z-20 w-11 touch-none", view < maxView ? "cursor-grab active:cursor-grabbing" : "cursor-default")}
-                >
-                  <span className="absolute right-1 top-1/2 h-16 w-1.5 -translate-y-1/2 rounded-full bg-wood-200 opacity-60 transition-opacity group-hover:opacity-100" />
-                  <span className="absolute bottom-0 right-0 size-11 rounded-tl-[18px] bg-[linear-gradient(135deg,transparent_50%,#EAD7C3_50%)] shadow-[-2px_-2px_4px_-2px_#C9B49C]" />
+                  {layers.leaf && turn && (
+                    <TurningLeaf
+                      leaf={layers.leaf}
+                      images={images}
+                      highlightsByPage={highlights.byPage}
+                      width={pageWidth}
+                      height={pageHeight}
+                      progress={turn.progress}
+                      settling={turn.settling}
+                      onTransitionEnd={handleTransitionEnd}
+                    />
+                  )}
+
+                  <div
+                    {...edgeZoneProps("prev")}
+                    aria-hidden="true"
+                    className={cn("group absolute inset-y-0 left-0 z-20 w-11 touch-none", view > 0 ? "cursor-grab active:cursor-grabbing" : "cursor-default")}
+                  >
+                    <span className="absolute left-1 top-1/2 h-16 w-1.5 -translate-y-1/2 rounded-full bg-wood-200 opacity-60 transition-opacity group-hover:opacity-100" />
+                  </div>
+
+                  <div
+                    {...edgeZoneProps("next")}
+                    aria-hidden="true"
+                    className={cn("group absolute inset-y-0 right-0 z-20 w-11 touch-none", view < maxView ? "cursor-grab active:cursor-grabbing" : "cursor-default")}
+                  >
+                    <span className="absolute right-1 top-1/2 h-16 w-1.5 -translate-y-1/2 rounded-full bg-wood-200 opacity-60 transition-opacity group-hover:opacity-100" />
+                    <span className="absolute bottom-0 right-0 size-11 rounded-tl-[18px] bg-[linear-gradient(135deg,transparent_50%,#EAD7C3_50%)] shadow-[-2px_-2px_4px_-2px_#C9B49C]" />
+                  </div>
                 </div>
               </div>
+            )}
+          </div>
+
+          <ArrowButton direction="next" disabled={view >= maxView} onClick={() => animate("next")} className="hidden lg:flex" />
+        </Document>
+
+        <div className="mx-auto flex w-full max-w-240 items-center gap-3 px-4 pb-3 pt-2.5">
+          <ArrowButton direction="prev" disabled={view === 0} onClick={() => animate("prev")} className="size-11 lg:hidden" />
+
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <strong aria-live="polite">{pageLabel(view, mode, pageCount)}</strong>
+              {readerError ? (
+                <span role="alert" className="text-xs font-bold text-danger">
+                  {readerError}
+                </span>
+              ) : (
+                <span className="hidden text-xs text-ink-soft xl:inline">Select text to highlight or comment. B bookmark, N notes</span>
+              )}
             </div>
+            <div className="h-2 overflow-hidden rounded-full bg-sage-200">
+              <div className="h-full rounded-full bg-sage-400 transition-[width] duration-400" style={{ width: `${progressPercent}%` }} />
+            </div>
+          </div>
+
+          <ZoomControls zoom={zoom} canZoomIn={canZoomIn} canZoomOut={canZoomOut} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} />
+
+          <ToolbarButton label="Notes" active={isNotesOpen} onClick={() => setIsNotesOpen((open) => !open)} badge={notesCount}>
+            <NotesIcon />
+          </ToolbarButton>
+
+          {fullscreen.canFullscreen && (
+            <ToolbarButton
+              label={fullscreen.isFullscreen ? "Exit full screen" : "Full screen"}
+              active={fullscreen.isFullscreen}
+              onClick={fullscreen.toggleFullscreen}
+            >
+              <FullscreenIcon active={fullscreen.isFullscreen} />
+            </ToolbarButton>
           )}
+
+          <ArrowButton direction="next" disabled={view >= maxView} onClick={() => animate("next")} className="size-11 lg:hidden" />
         </div>
-
-        <ArrowButton direction="next" disabled={view >= maxView} onClick={() => animate("next")} className="hidden lg:flex" />
-      </Document>
-
-      <div className="mx-auto flex w-full max-w-240 items-center gap-3 px-4 pb-3 pt-2.5">
-        <ArrowButton direction="prev" disabled={view === 0} onClick={() => animate("prev")} className="size-11 lg:hidden" />
-
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-2 text-sm">
-            <strong aria-live="polite">{pageLabel(view, mode, pageCount)}</strong>
-            <span className="hidden text-xs text-ink-soft xl:inline">← → to turn, + − to zoom, F for full screen</span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-sage-200">
-            <div className="h-full rounded-full bg-sage-400 transition-[width] duration-400" style={{ width: `${progressPercent}%` }} />
-          </div>
-        </div>
-
-        <ZoomControls zoom={zoom} onChange={changeZoom} />
-        {canFullscreen && <FullscreenButton active={isFullscreen} onClick={toggleFullscreen} />}
-
-        <ArrowButton direction="next" disabled={view >= maxView} onClick={() => animate("next")} className="size-11 lg:hidden" />
       </div>
+
+      {isNotesOpen && (
+        <NotesPanel
+          pdf={pdf}
+          bookmarks={bookmarks.bookmarks}
+          highlights={highlights.highlights}
+          visiblePages={visiblePages}
+          onSelectPage={goToPage}
+          onRemoveBookmark={bookmarks.toggle}
+          onRemoveHighlight={highlights.remove}
+          onRemoveNote={(id) => highlights.saveNote(id, "")}
+          onClose={() => setIsNotesOpen(false)}
+        />
+      )}
+
+      {selection && !activeHighlight && !noteEditor && (
+        <SelectionToolbar
+          anchor={selection.anchor}
+          onHighlight={(color) => {
+            highlights.add({ page: selection.page, color, text: selection.text, rects: selection.rects });
+            clearSelection();
+          }}
+          onComment={() => {
+            setNoteEditor({ kind: "new", selection });
+            clearSelection();
+          }}
+          onCopy={() => {
+            void navigator.clipboard.writeText(selection.text);
+            clearSelection();
+          }}
+        />
+      )}
+
+      {activeHighlight && activeHighlightData && !noteEditor && (
+        <HighlightMenu
+          anchor={activeHighlight.anchor}
+          current={activeHighlightData.color}
+          hasNote={Boolean(activeHighlightData.note)}
+          onRecolor={(color) => {
+            highlights.recolor(activeHighlightData.id, color);
+            setActiveHighlight(null);
+          }}
+          onComment={() => openNote(activeHighlightData.id, activeHighlight.anchor)}
+          onDelete={() => {
+            highlights.remove(activeHighlightData.id);
+            setActiveHighlight(null);
+          }}
+        />
+      )}
+
+      {noteEditor?.kind === "new" && (
+        <NoteEditor
+          key="new-note"
+          anchor={noteEditor.selection.anchor}
+          quote={noteEditor.selection.text}
+          initialNote=""
+          isEditing={false}
+          onSave={(note) => {
+            const { page, text, rects } = noteEditor.selection;
+            highlights.add({ page, color: DEFAULT_COMMENT_COLOR, text, rects, note });
+            setNoteEditor(null);
+          }}
+          onCancel={() => setNoteEditor(null)}
+        />
+      )}
+
+      {noteEditor?.kind === "edit" && editingHighlight && (
+        <NoteEditor
+          key={editingHighlight.id}
+          anchor={noteEditor.anchor}
+          quote={editingHighlight.text}
+          initialNote={editingHighlight.note ?? ""}
+          isEditing={Boolean(editingHighlight.note)}
+          onSave={(note) => {
+            highlights.saveNote(editingHighlight.id, note);
+            setNoteEditor(null);
+          }}
+          onDelete={() => {
+            highlights.saveNote(editingHighlight.id, "");
+            setNoteEditor(null);
+          }}
+          onCancel={() => setNoteEditor(null)}
+        />
+      )}
     </div>
   );
 }
