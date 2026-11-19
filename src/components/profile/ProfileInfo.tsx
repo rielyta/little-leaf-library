@@ -1,8 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { PasswordRow } from "@/components/profile/PasswordRow";
 import { ProfileField, type SaveResult } from "@/components/profile/ProfileField";
+import { Button } from "@/components/ui/Button";
+import { FormAlert } from "@/components/ui/FormAlert";
 import { authClient } from "@/lib/auth-client";
 import { nameField, usernameField } from "@/lib/validation/auth";
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH } from "@/lib/validation/username";
@@ -17,6 +20,8 @@ type ProfileInfoProps = {
 
 export function ProfileInfo({ username, name, email, hasPassword, hasGoogle }: ProfileInfoProps) {
   const router = useRouter();
+  const [isLinking, setIsLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   async function saveUser(data: { name: string } | { username: string; displayUsername: string }): Promise<SaveResult> {
     const { error } = await authClient.updateUser(data);
@@ -29,6 +34,21 @@ export function ProfileInfo({ username, name, email, hasPassword, hasGoogle }: P
     return { ok: true };
   }
 
+  async function connectGoogle() {
+    setLinkError(null);
+    setIsLinking(true);
+
+    const { error } = await authClient.linkSocial({
+      provider: "google",
+      callbackURL: "/profile",
+    });
+
+    if (error) {
+      setIsLinking(false);
+      setLinkError(error.message ?? "We could not connect Google right now. Please try again.");
+    }
+  }
+
   return (
     <section
       aria-labelledby="info-title"
@@ -38,12 +58,18 @@ export function ProfileInfo({ username, name, email, hasPassword, hasGoogle }: P
         <h2 id="info-title" className="font-display text-xl font-semibold text-ink-strong">
           Profile info
         </h2>
-        {hasGoogle && (
+        {hasGoogle ? (
           <span className="rounded-full border-[1.5px] border-mist-100 bg-mist-50 px-3 py-1 text-xs font-extrabold text-mist-800">
             Connected with Google
           </span>
+        ) : (
+          <Button variant="outline" onClick={connectGoogle} disabled={isLinking}>
+            {isLinking ? "Opening Google..." : "Connect Google"}
+          </Button>
         )}
       </div>
+
+      <FormAlert message={linkError} />
 
       <ProfileField
         id="username"
@@ -67,7 +93,7 @@ export function ProfileInfo({ username, name, email, hasPassword, hasGoogle }: P
       <div className="flex flex-col gap-0.5 border-t-[1.5px] border-[#F0E6DA] py-4">
         <span className="text-[13px] font-extrabold text-ink-soft">Email</span>
         <span className="break-words text-[17px] font-bold text-ink-strong">{email}</span>
-        <span className="text-[13px] text-ink-soft">Used to log in and to receive password links.</span>
+        <span className="text-[13px] text-ink-soft">Used to sign in and to reset your password.</span>
       </div>
 
       <PasswordRow email={email} hasPassword={hasPassword} />

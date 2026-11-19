@@ -42,6 +42,16 @@ export const auth = betterAuth({
 
   socialProviders,
 
+  account: {
+    accountLinking: {
+      enabled: true,
+    },
+  },
+
+  onAPIError: {
+    errorURL: "/auth-error",
+  },
+
   user: {
     additionalFields: {
       avatar: {
