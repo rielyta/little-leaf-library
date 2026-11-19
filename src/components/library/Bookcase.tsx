@@ -1,0 +1,77 @@
+import { POT_COLORS, SHELVES_PER_BOOKCASE, WOODS, type BookcaseSummary } from "@/lib/bookcases";
+
+type BookcaseProps = {
+  bookcase: BookcaseSummary;
+  index: number;
+};
+
+function ShelfPlant({ pot }: { pot: string }) {
+  return (
+    <svg viewBox="0 0 300 64" className="block h-16 w-full" aria-hidden="true">
+      <path d="M228 62h40l-4-22h-32z" fill={pot} stroke="#5A4636" strokeWidth="1.5" />
+      <path
+        d="M248 40c-2-14-10-24-22-28M248 40c2-16 10-28 22-32M248 40c0-14 0-24 2-34"
+        stroke="#5E8C6A"
+        strokeWidth="2"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <g stroke="#5A4636" strokeWidth="1.2">
+        <ellipse cx="228" cy="14" rx="9" ry="5" fill="#9CC5A1" transform="rotate(30 228 14)" />
+        <ellipse cx="268" cy="10" rx="9" ry="5" fill="#BFD8C2" transform="rotate(-30 268 10)" />
+        <ellipse cx="250" cy="6" rx="5" ry="8" fill="#9CC5A1" />
+      </g>
+      <rect x="30" y="44" width="34" height="18" rx="3" fill="#FFFDF8" stroke="#5A4636" strokeWidth="1.4" />
+      <rect x="34" y="30" width="26" height="14" rx="3" fill={pot} stroke="#5A4636" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+export function Bookcase({ bookcase, index }: BookcaseProps) {
+  const wood = WOODS[bookcase.wood];
+  const pot = POT_COLORS[index % POT_COLORS.length];
+  const isEmpty = bookcase.bookCount === 0;
+
+  return (
+    <section
+      aria-label={`${bookcase.name} bookcase`}
+      className="relative flex w-75 flex-none snap-start flex-col"
+    >
+      <ShelfPlant pot={pot} />
+
+      <div
+        className="flex h-10 items-center justify-center rounded-t-2xl rounded-b-sm border-[1.5px] border-ink px-3"
+        style={{ backgroundColor: wood.light }}
+      >
+        <span className="max-w-full truncate rounded-[10px] border-[1.5px] border-ink bg-paper px-4 py-0.5 font-display text-base font-semibold text-ink-strong">
+          {bookcase.name}
+        </span>
+      </div>
+
+      <div
+        className="relative flex flex-col gap-3 border-[1.5px] border-t-0 border-ink p-3"
+        style={{ backgroundColor: wood.dark }}
+      >
+        {Array.from({ length: SHELVES_PER_BOOKCASE }, (_, shelf) => (
+          <div
+            key={shelf}
+            className="h-29.5 rounded-sm border-[1.5px] border-b-8 border-ink bg-wood-200"
+            style={{ borderBottomColor: wood.light }}
+          />
+        ))}
+
+        {isEmpty && (
+          <div className="absolute inset-x-6 top-35 flex flex-col items-center gap-2 rounded-[1.125rem] border-[1.5px] border-ink bg-paper p-4.5 text-center">
+            <strong className="font-display text-[17px] font-semibold text-ink-strong">This bookcase is still quiet</strong>
+            <span className="text-[13px] leading-relaxed text-ink-soft">The PDF books you upload will stand here.</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between px-3.5">
+        <span className="h-3.5 w-5.5 rounded-b-md border-[1.5px] border-t-0 border-ink" style={{ backgroundColor: wood.dark }} />
+        <span className="h-3.5 w-5.5 rounded-b-md border-[1.5px] border-t-0 border-ink" style={{ backgroundColor: wood.dark }} />
+      </div>
+    </section>
+  );
+}

@@ -60,6 +60,19 @@
   }
 }
 
+@utility floor-tiles {
+  background-color: var(--color-wood-100);
+  background-image: repeating-linear-gradient(90deg, transparent 0 118px, #e2d2be 118px 120px);
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 html {
   scroll-behavior: smooth;
 }

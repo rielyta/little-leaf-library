@@ -7,22 +7,45 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Wood {
+  honey
+  cream
+  mint
+}
+
 model User {
-  id              String    @id
+  id              String     @id
   name            String
-  email           String    @unique
-  emailVerified   Boolean   @default(false)
+  email           String     @unique
+  emailVerified   Boolean    @default(false)
   image           String?
-  username        String?   @unique
+  username        String?    @unique
   displayUsername String?
-  avatar          String    @default("cat-0")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  avatar          String     @default("cat-0")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   sessions        Session[]
   accounts        Account[]
+  bookcases       Bookcase[]
 
   @@map("user")
+}
+
+model Bookcase {
+  id        String   @id @default(cuid())
+  name      String
+  wood      Wood     @default(honey)
+  position  Int
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId, position])
+  @@map("bookcase")
 }
 
 model Session {
