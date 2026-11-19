@@ -7,6 +7,10 @@
   --color-ink: #5a4636;
   --color-ink-strong: #4a3929;
   --color-ink-soft: #6e5a4a;
+  --color-ink-faint: #9a8878;
+  --color-line: #e2d3c2;
+
+  --color-danger: #9c4a5e;
 
   --color-blush-50: #fdf1f3;
   --color-blush-100: #f6d6dc;
@@ -14,6 +18,7 @@
   --color-blush-300: #e7b9c4;
   --color-blush-400: #f2b8c6;
   --color-blush-700: #b06a7e;
+  --color-blush-800: #6b4f55;
 
   --color-mist-50: #eef5f8;
   --color-mist-100: #cfe3ea;

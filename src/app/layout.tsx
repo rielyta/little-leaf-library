@@ -33,7 +33,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en" className={`${fredoka.variable} ${nunito.variable} ${lora.variable}`}>
+    <html
+      lang="en"
+      data-scroll-behavior="smooth"
+      className={`${fredoka.variable} ${nunito.variable} ${lora.variable}`}
+    >
       <body className="bg-cream font-sans text-ink antialiased">{children}</body>
     </html>
   );
