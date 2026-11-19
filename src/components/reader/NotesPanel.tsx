@@ -1,22 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { NoteIcon } from "@/components/reader/HighlightToolbars";
+import { LeafIcon } from "@/components/reader/TranslateCard";
 import { cn } from "@/lib/cn";
 import { HIGHLIGHT_COLORS, type Highlight } from "@/lib/highlights";
+import type { SavedWord } from "@/lib/translate";
 
 const SNIPPET_LENGTH = 90;
 
-type NotesTab = "bookmarks" | "highlights" | "comments";
+type NotesTab = "bookmarks" | "highlights" | "comments" | "words";
 
 type NotesPanelProps = {
   pdf: PDFDocumentProxy | null;
   bookmarks: number[];
   highlights: Highlight[];
+  savedWords: SavedWord[];
   visiblePages: number[];
   onSelectPage: (page: number) => void;
   onRemoveBookmark: (page: number) => void;
   onRemoveHighlight: (id: string) => void;
   onRemoveNote: (id: string) => void;
+  onRemoveSavedWord: (id: string) => void;
   onClose: () => void;
 };
 
@@ -73,12 +77,18 @@ function RemoveButton({ label, onClick }: { label: string; onClick: () => void }
   );
 }
 
-function ItemShell({ isCurrent, onSelect, onRemove, removeLabel, children }: {
+function ItemShell({
+  isCurrent,
+  onSelect,
+  onRemove,
+  removeLabel,
+  children,
+}: {
   isCurrent: boolean;
   onSelect: () => void;
   onRemove: () => void;
   removeLabel: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <li className={cn("flex items-start rounded-2xl border-[1.5px] bg-white", isCurrent ? "border-ink" : "border-[#EADFD2]")}>
@@ -90,7 +100,19 @@ function ItemShell({ isCurrent, onSelect, onRemove, removeLabel, children }: {
   );
 }
 
-function BookmarkItem({ pdf, page, isCurrent, onSelect, onRemove }: { pdf: PDFDocumentProxy | null; page: number; isCurrent: boolean; onSelect: () => void; onRemove: () => void }) {
+function BookmarkItem({
+  pdf,
+  page,
+  isCurrent,
+  onSelect,
+  onRemove,
+}: {
+  pdf: PDFDocumentProxy | null;
+  page: number;
+  isCurrent: boolean;
+  onSelect: () => void;
+  onRemove: () => void;
+}) {
   const snippet = usePageSnippet(pdf, page);
 
   return (
@@ -121,7 +143,7 @@ function EmptyNotice({ children }: { children: string }) {
   return <p className="rounded-2xl border-[1.5px] border-dashed border-wood-300 p-4 text-sm leading-relaxed text-ink-soft">{children}</p>;
 }
 
-function ItemList({ children }: { children: React.ReactNode }) {
+function ItemList({ children }: { children: ReactNode }) {
   return <ul className="scrollbar-none flex min-h-0 flex-col gap-2.5 overflow-y-auto">{children}</ul>;
 }
 
@@ -129,22 +151,26 @@ export function NotesPanel({
   pdf,
   bookmarks,
   highlights,
+  savedWords,
   visiblePages,
   onSelectPage,
   onRemoveBookmark,
   onRemoveHighlight,
   onRemoveNote,
+  onRemoveSavedWord,
   onClose,
 }: NotesPanelProps) {
   const [tab, setTab] = useState<NotesTab>("bookmarks");
 
   const sortedHighlights = [...highlights].sort((a, b) => a.page - b.page);
   const comments = sortedHighlights.filter((highlight) => highlight.note);
+  const sortedWords = [...savedWords].sort((a, b) => a.page - b.page || a.word.localeCompare(b.word));
 
   const tabs: { key: NotesTab; label: string; count: number }[] = [
     { key: "bookmarks", label: "Bookmarks", count: bookmarks.length },
     { key: "highlights", label: "Highlights", count: highlights.length },
     { key: "comments", label: "Comments", count: comments.length },
+    { key: "words", label: "Words", count: savedWords.length },
   ];
 
   return (
@@ -166,7 +192,7 @@ export function NotesPanel({
         </button>
       </div>
 
-      <div role="tablist" aria-label="Note type" className="flex gap-1 rounded-full bg-[#F3EADF] p-1">
+      <div role="tablist" aria-label="Note type" className="grid grid-cols-4 gap-1 rounded-2xl bg-[#F3EADF] p-1">
         {tabs.map((item) => (
           <button
             key={item.key}
@@ -175,12 +201,12 @@ export function NotesPanel({
             aria-selected={tab === item.key}
             onClick={() => setTab(item.key)}
             className={cn(
-              "flex min-h-9 flex-1 items-center justify-center gap-1 rounded-full text-[12px] font-extrabold transition-colors",
+              "flex min-h-11 flex-col items-center justify-center rounded-xl px-1 leading-tight transition-colors",
               tab === item.key ? "bg-white shadow-[0_2px_0_var(--color-line)]" : "hover:bg-white/60",
             )}
           >
-            {item.label}
-            <span className="text-ink-soft">{item.count}</span>
+            <span className="text-[11px] font-extrabold">{item.label}</span>
+            <span className="text-[11px] font-bold text-ink-soft">{item.count}</span>
           </button>
         ))}
       </div>
@@ -248,6 +274,40 @@ export function NotesPanel({
                     <span className="text-xs font-extrabold text-ink-soft">Page {highlight.page}</span>
                     <span className="line-clamp-2 font-serif text-[13px] italic leading-snug text-ink-soft">{highlight.text}</span>
                     <span className="whitespace-pre-line text-sm leading-snug text-ink-strong">{highlight.note}</span>
+                  </span>
+                </ItemShell>
+              ))}
+            </ItemList>
+          ))}
+
+        {tab === "words" &&
+          (savedWords.length === 0 ? (
+            <EmptyNotice>No saved words yet. Select a word, choose Translate, then tap the leaf to keep it here.</EmptyNotice>
+          ) : (
+            <ItemList>
+              {sortedWords.map((item) => (
+                <ItemShell
+                  key={item.id}
+                  isCurrent={visiblePages.includes(item.page)}
+                  onSelect={() => onSelectPage(item.page)}
+                  onRemove={() => onRemoveSavedWord(item.id)}
+                  removeLabel={`Remove ${item.word} from saved words`}
+                >
+                  <span className="flex size-8 flex-none items-center justify-center rounded-[10px] border-[1.5px] border-ink bg-sage-100">
+                    <LeafIcon filled className="size-3.5" />
+                  </span>
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-serif text-[15px] font-semibold text-ink-strong">{item.word}</span>
+                      <span className="text-xs font-extrabold text-ink-soft">Page {item.page}</span>
+                    </span>
+                    <span className="text-sm leading-snug text-ink-strong">{item.translation}</span>
+                    {item.definition && (
+                      <span className="line-clamp-2 text-xs leading-snug text-ink-soft">
+                        {item.partOfSpeech && <em>{item.partOfSpeech}. </em>}
+                        {item.definition}
+                      </span>
+                    )}
                   </span>
                 </ItemShell>
               ))}

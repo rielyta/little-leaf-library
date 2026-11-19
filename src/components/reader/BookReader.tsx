@@ -11,13 +11,16 @@ import { NotesPanel } from "@/components/reader/NotesPanel";
 import { findReaderPage, PaperPage, type PageSide } from "@/components/reader/PaperPage";
 import { ArrowButton, FullscreenIcon, NotesIcon, ToolbarButton, ZoomControls } from "@/components/reader/ReaderControls";
 import { ReaderStatus } from "@/components/reader/ReaderStatus";
+import { TranslateCard } from "@/components/reader/TranslateCard";
 import { TurningLeaf } from "@/components/reader/TurningLeaf";
 import { useBookmarks } from "@/components/reader/useBookmarks";
 import { useFullscreen } from "@/components/reader/useFullscreen";
 import { useHighlights } from "@/components/reader/useHighlights";
 import { usePageImages } from "@/components/reader/usePageImages";
 import { usePageTurn } from "@/components/reader/usePageTurn";
+import { useSavedWords } from "@/components/reader/useSavedWords";
 import { useTextSelection, type FloatingAnchor, type PendingSelection } from "@/components/reader/useTextSelection";
+import { useTranslateLanguage } from "@/components/reader/useTranslateLanguage";
 import { useZoom } from "@/components/reader/useZoom";
 import { useElementSize } from "@/hooks/useElementSize";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -34,6 +37,7 @@ import {
   viewForPage,
   type TurnDirection,
 } from "@/lib/reader";
+import { normalizeSelection, TRANSLATE_TEXT_MAX_LENGTH, type SavedWord } from "@/lib/translate";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -60,6 +64,7 @@ export type BookReaderProps = {
   initialPage: number;
   initialBookmarks: number[];
   initialHighlights: Highlight[];
+  initialSavedWords: SavedWord[];
 };
 
 type DragState = {
@@ -77,7 +82,21 @@ type NoteEditorState =
   | { kind: "new"; selection: PendingSelection }
   | { kind: "edit"; highlightId: string; anchor: FloatingAnchor };
 
-export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBookmarks, initialHighlights }: BookReaderProps) {
+type TranslationState = {
+  text: string;
+  page: number;
+  anchor: FloatingAnchor;
+};
+
+export function BookReader({
+  bookId,
+  fileUrl,
+  pageCount,
+  initialPage,
+  initialBookmarks,
+  initialHighlights,
+  initialSavedWords,
+}: BookReaderProps) {
   const isWide = useMediaQuery("(min-width: 1024px)");
   const mode = isWide ? "double" : "single";
   const columns = mode === "double" ? 2 : 1;
@@ -88,6 +107,7 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [activeHighlight, setActiveHighlight] = useState<ActiveHighlight | null>(null);
   const [noteEditor, setNoteEditor] = useState<NoteEditorState | null>(null);
+  const [translation, setTranslation] = useState<TranslationState | null>(null);
   const [stageRef, stageSize] = useElementSize<HTMLDivElement>();
   const bookRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -97,6 +117,8 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
   const fullscreen = useFullscreen<HTMLDivElement>();
   const bookmarks = useBookmarks(bookId, initialBookmarks);
   const highlights = useHighlights(bookId, initialHighlights);
+  const savedWords = useSavedWords(bookId, initialSavedWords);
+  const translateLanguage = useTranslateLanguage();
 
   const view = viewForPage(anchorPage, mode);
   const maxView = lastView(mode, pageCount);
@@ -127,12 +149,13 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
   const findHighlight = (id: string) => highlights.highlights.find((highlight) => highlight.id === id);
   const activeHighlightData = activeHighlight ? findHighlight(activeHighlight.id) : undefined;
   const editingHighlight = noteEditor?.kind === "edit" ? findHighlight(noteEditor.highlightId) : undefined;
-  const readerError = bookmarks.error ?? highlights.error;
-  const notesCount = bookmarks.bookmarks.length + highlights.highlights.length;
+  const readerError = bookmarks.error ?? highlights.error ?? savedWords.error;
+  const notesCount = bookmarks.bookmarks.length + highlights.highlights.length + savedWords.words.length;
 
   function closeFloatingUi() {
     setActiveHighlight(null);
     setNoteEditor(null);
+    setTranslation(null);
   }
 
   function goToPage(page: number) {
@@ -145,12 +168,27 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
 
   function openNote(highlightId: string, anchor: FloatingAnchor) {
     setActiveHighlight(null);
+    setTranslation(null);
     setNoteEditor({ kind: "edit", highlightId, anchor });
+  }
+
+  function openTranslation(current: PendingSelection) {
+    const text = normalizeSelection(current.text).slice(0, TRANSLATE_TEXT_MAX_LENGTH);
+
+    if (!text) {
+      return;
+    }
+
+    setActiveHighlight(null);
+    setNoteEditor(null);
+    setTranslation({ text, page: current.page, anchor: current.anchor });
+    clearSelection();
   }
 
   useEffect(() => {
     setActiveHighlight(null);
     setNoteEditor(null);
+    setTranslation(null);
   }, [view, mode, zoom]);
 
   useEffect(() => {
@@ -205,6 +243,8 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
         bookmarks.toggle(visiblePages[0]);
       } else if (key === "n") {
         setIsNotesOpen((open) => !open);
+      } else if (key === "t" && selection) {
+        openTranslation(selection);
       }
     }
 
@@ -395,7 +435,7 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
                   {readerError}
                 </span>
               ) : (
-                <span className="hidden text-xs text-ink-soft xl:inline">Select text to highlight or comment. B bookmark, N notes</span>
+                <span className="hidden text-xs text-ink-soft xl:inline">Select text to highlight, comment or translate. T translate, N notes</span>
               )}
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-sage-200">
@@ -428,16 +468,18 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
           pdf={pdf}
           bookmarks={bookmarks.bookmarks}
           highlights={highlights.highlights}
+          savedWords={savedWords.words}
           visiblePages={visiblePages}
           onSelectPage={goToPage}
           onRemoveBookmark={bookmarks.toggle}
           onRemoveHighlight={highlights.remove}
           onRemoveNote={(id) => highlights.saveNote(id, "")}
+          onRemoveSavedWord={savedWords.remove}
           onClose={() => setIsNotesOpen(false)}
         />
       )}
 
-      {selection && !activeHighlight && !noteEditor && (
+      {selection && !activeHighlight && !noteEditor && !translation && (
         <SelectionToolbar
           anchor={selection.anchor}
           onHighlight={(color) => {
@@ -448,6 +490,7 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
             setNoteEditor({ kind: "new", selection });
             clearSelection();
           }}
+          onTranslate={() => openTranslation(selection)}
           onCopy={() => {
             void navigator.clipboard.writeText(selection.text);
             clearSelection();
@@ -504,6 +547,21 @@ export function BookReader({ bookId, fileUrl, pageCount, initialPage, initialBoo
             setNoteEditor(null);
           }}
           onCancel={() => setNoteEditor(null)}
+        />
+      )}
+
+      {translation && (
+        <TranslateCard
+          key={`${translation.page}-${translation.text}`}
+          anchor={translation.anchor}
+          text={translation.text}
+          page={translation.page}
+          language={translateLanguage.language}
+          savedWord={savedWords.find(translation.text)}
+          onLanguageChange={translateLanguage.setLanguage}
+          onSave={savedWords.save}
+          onUnsave={savedWords.remove}
+          onClose={() => setTranslation(null)}
         />
       )}
     </div>

@@ -38,6 +38,7 @@ model User {
   books           Book[]
   bookmarks       Bookmark[]
   highlights      Highlight[]
+  savedWords      SavedWord[]
 
   @@map("user")
 }
@@ -78,6 +79,7 @@ model Book {
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   bookmarks    Bookmark[]
   highlights   Highlight[]
+  savedWords   SavedWord[]
 
   @@index([bookcaseId, position])
   @@index([userId])
@@ -117,6 +119,26 @@ model Highlight {
   @@index([bookId, page])
   @@index([userId])
   @@map("highlight")
+}
+
+model SavedWord {
+  id           String   @id @default(cuid())
+  word         String
+  translation  String
+  language     String
+  partOfSpeech String?
+  definition   String?
+  page         Int
+  bookId       String
+  userId       String
+  createdAt    DateTime @default(now())
+
+  book         Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, word])
+  @@index([userId])
+  @@map("saved_word")
 }
 
 model Session {

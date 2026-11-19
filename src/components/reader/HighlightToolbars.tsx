@@ -3,16 +3,18 @@ import type { FloatingAnchor } from "@/components/reader/useTextSelection";
 import { cn } from "@/lib/cn";
 import { HIGHLIGHT_COLOR_KEYS, HIGHLIGHT_COLORS, HIGHLIGHT_NOTE_MAX_LENGTH, type HighlightColor } from "@/lib/highlights";
 
-const EDGE_MARGIN_PX = 90;
+const SELECTION_TOOLBAR_MARGIN_PX = 230;
+const HIGHLIGHT_MENU_MARGIN_PX = 190;
 const NOTE_EDGE_MARGIN_PX = 160;
 const MIN_SPACE_ABOVE_PX = 72;
 const NOTE_EDITOR_HEIGHT_PX = 260;
 
 function horizontalPosition(x: number, margin: number) {
-  return Math.min(Math.max(x, margin), window.innerWidth - margin);
+  const safeMargin = Math.min(margin, window.innerWidth / 2);
+  return Math.min(Math.max(x, safeMargin), window.innerWidth - safeMargin);
 }
 
-function FloatingBar({ anchor, label, children }: { anchor: FloatingAnchor; label: string; children: ReactNode }) {
+function FloatingBar({ anchor, label, margin, children }: { anchor: FloatingAnchor; label: string; margin: number; children: ReactNode }) {
   const placeBelow = anchor.top < MIN_SPACE_ABOVE_PX;
 
   return (
@@ -22,7 +24,7 @@ function FloatingBar({ anchor, label, children }: { anchor: FloatingAnchor; labe
       onPointerDown={(event) => event.preventDefault()}
       className="fixed z-50 flex items-center gap-1.5 rounded-2xl border-[1.5px] border-ink bg-paper p-1.5 shadow-[0_5px_0_#CFE3EA]"
       style={{
-        left: horizontalPosition(anchor.x, EDGE_MARGIN_PX),
+        left: horizontalPosition(anchor.x, margin),
         top: placeBelow ? anchor.bottom + 10 : anchor.top - 10,
         transform: placeBelow ? "translateX(-50%)" : "translate(-50%, -100%)",
       }}
@@ -48,17 +50,28 @@ function ColorButton({ color, active = false, onClick }: { color: HighlightColor
   );
 }
 
-function TextButton({ onClick, children, tone = "default" }: { onClick: () => void; children: ReactNode; tone?: "default" | "danger" }) {
+type TextButtonProps = {
+  label: string;
+  icon?: ReactNode;
+  compact?: boolean;
+  tone?: "default" | "danger";
+  onClick: () => void;
+};
+
+function TextButton({ label, icon, compact = false, tone = "default", onClick }: TextButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={label}
+      title={label}
       className={cn(
-        "flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-[13px] font-extrabold",
+        "flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-xl px-2 text-[13px] font-extrabold sm:px-3",
         tone === "danger" ? "text-danger hover:bg-blush-50" : "hover:bg-white",
       )}
     >
-      {children}
+      {icon}
+      <span className={cn(compact && "hidden sm:inline")}>{label}</span>
     </button>
   );
 }
@@ -71,6 +84,24 @@ export function NoteIcon({ className }: { className?: string }) {
   );
 }
 
+export function TranslateIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 4h7M5.5 2.5V4M7.5 4c-.6 2.4-2.1 4.3-4.5 5.5M4 6c.7 1.5 1.9 2.6 3.5 3.3" />
+      <path d="M8.5 14l2.5-6 2.5 6M9.3 12h3.4" />
+    </svg>
+  );
+}
+
+export function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="5.5" y="5.5" width="8" height="8.5" rx="1.5" />
+      <path d="M3 10.5V3.5A1.5 1.5 0 0 1 4.5 2H10" />
+    </svg>
+  );
+}
+
 function Divider() {
   return <span aria-hidden="true" className="mx-0.5 h-6 w-[1.5px] bg-line" />;
 }
@@ -79,21 +110,20 @@ type SelectionToolbarProps = {
   anchor: FloatingAnchor;
   onHighlight: (color: HighlightColor) => void;
   onComment: () => void;
+  onTranslate: () => void;
   onCopy: () => void;
 };
 
-export function SelectionToolbar({ anchor, onHighlight, onComment, onCopy }: SelectionToolbarProps) {
+export function SelectionToolbar({ anchor, onHighlight, onComment, onTranslate, onCopy }: SelectionToolbarProps) {
   return (
-    <FloatingBar anchor={anchor} label="Actions for selected text">
+    <FloatingBar anchor={anchor} label="Actions for selected text" margin={SELECTION_TOOLBAR_MARGIN_PX}>
       {HIGHLIGHT_COLOR_KEYS.map((color) => (
         <ColorButton key={color} color={color} onClick={() => onHighlight(color)} />
       ))}
       <Divider />
-      <TextButton onClick={onComment}>
-        <NoteIcon className="size-3.5" />
-        Comment
-      </TextButton>
-      <TextButton onClick={onCopy}>Copy</TextButton>
+      <TextButton label="Comment" icon={<NoteIcon className="size-3.5" />} compact onClick={onComment} />
+      <TextButton label="Translate" icon={<TranslateIcon className="size-4" />} compact onClick={onTranslate} />
+      <TextButton label="Copy" icon={<CopyIcon className="size-3.5" />} compact onClick={onCopy} />
     </FloatingBar>
   );
 }
@@ -109,18 +139,13 @@ type HighlightMenuProps = {
 
 export function HighlightMenu({ anchor, current, hasNote, onRecolor, onComment, onDelete }: HighlightMenuProps) {
   return (
-    <FloatingBar anchor={anchor} label="Highlight options">
+    <FloatingBar anchor={anchor} label="Highlight options" margin={HIGHLIGHT_MENU_MARGIN_PX}>
       {HIGHLIGHT_COLOR_KEYS.map((color) => (
         <ColorButton key={color} color={color} active={color === current} onClick={() => onRecolor(color)} />
       ))}
       <Divider />
-      <TextButton onClick={onComment}>
-        <NoteIcon className="size-3.5" />
-        {hasNote ? "Edit comment" : "Comment"}
-      </TextButton>
-      <TextButton onClick={onDelete} tone="danger">
-        Remove
-      </TextButton>
+      <TextButton label={hasNote ? "Edit comment" : "Comment"} icon={<NoteIcon className="size-3.5" />} compact onClick={onComment} />
+      <TextButton label="Remove" tone="danger" onClick={onDelete} />
     </FloatingBar>
   );
 }

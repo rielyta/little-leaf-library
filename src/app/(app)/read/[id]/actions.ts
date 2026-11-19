@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { Highlight, HighlightColor, NewHighlight } from "@/lib/highlights";
+import type { NewSavedWord, SavedWord } from "@/lib/translate";
 import { highlightColorSchema, highlightNoteSchema, newHighlightSchema } from "@/lib/validation/highlight";
+import { newSavedWordSchema } from "@/lib/validation/translate";
 import { toggleBookmarkForUser } from "@/server/bookmarks";
 import { saveLastReadPage } from "@/server/books";
 import {
@@ -12,6 +14,7 @@ import {
   recolorHighlightForUser,
   updateHighlightNoteForUser,
 } from "@/server/highlights";
+import { deleteSavedWordForUser, saveWordForUser } from "@/server/saved-words";
 import { requireSession } from "@/server/session";
 
 const pageInBookSchema = z.object({
@@ -21,9 +24,11 @@ const pageInBookSchema = z.object({
 
 const idSchema = z.string().min(1);
 
+export type ChangeResult = { ok: true } | { ok: false; error: string };
+export type HighlightChangeResult = ChangeResult;
 export type BookmarkResult = { ok: true; bookmarks: number[] } | { ok: false; error: string };
 export type CreateHighlightResult = { ok: true; highlight: Highlight } | { ok: false; error: string };
-export type HighlightChangeResult = { ok: true } | { ok: false; error: string };
+export type SaveWordResult = { ok: true; word: SavedWord } | { ok: false; error: string };
 
 export async function saveReadingPosition(bookId: string, page: number) {
   const parsed = pageInBookSchema.safeParse({ bookId, page });
@@ -114,4 +119,35 @@ export async function removeHighlight(highlightId: string): Promise<HighlightCha
   const removed = await deleteHighlightForUser(user.id, parsedId.data);
 
   return removed ? { ok: true } : { ok: false, error: "That highlight could not be removed." };
+}
+
+export async function saveWord(bookId: string, input: NewSavedWord): Promise<SaveWordResult> {
+  const parsedBookId = idSchema.safeParse(bookId);
+  const parsed = newSavedWordSchema.safeParse(input);
+
+  if (!parsedBookId.success || !parsed.success) {
+    return { ok: false, error: "That word could not be saved." };
+  }
+
+  const { user } = await requireSession();
+  const word = await saveWordForUser(user.id, parsedBookId.data, parsed.data);
+
+  if (!word) {
+    return { ok: false, error: "That word could not be saved." };
+  }
+
+  return { ok: true, word };
+}
+
+export async function removeSavedWord(savedWordId: string): Promise<ChangeResult> {
+  const parsedId = idSchema.safeParse(savedWordId);
+
+  if (!parsedId.success) {
+    return { ok: false, error: "That word could not be removed." };
+  }
+
+  const { user } = await requireSession();
+  const removed = await deleteSavedWordForUser(user.id, parsedId.data);
+
+  return removed ? { ok: true } : { ok: false, error: "That word could not be removed." };
 }
