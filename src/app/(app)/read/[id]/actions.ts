@@ -6,6 +6,7 @@ import type { Highlight, HighlightColor, NewHighlight } from "@/lib/highlights";
 import type { NewSavedWord, SavedWord } from "@/lib/translate";
 import { highlightColorSchema, highlightNoteSchema, newHighlightSchema } from "@/lib/validation/highlight";
 import { newSavedWordSchema } from "@/lib/validation/translate";
+import { moveBookForUser } from "@/server/book-placement";
 import { toggleBookmarkForUser } from "@/server/bookmarks";
 import { saveLastReadPage } from "@/server/books";
 import {
@@ -29,6 +30,7 @@ export type HighlightChangeResult = ChangeResult;
 export type BookmarkResult = { ok: true; bookmarks: number[] } | { ok: false; error: string };
 export type CreateHighlightResult = { ok: true; highlight: Highlight } | { ok: false; error: string };
 export type SaveWordResult = { ok: true; word: SavedWord } | { ok: false; error: string };
+export type MoveBookResult = { ok: true; bookcaseName: string } | { ok: false; error: string };
 
 export async function saveReadingPosition(bookId: string, page: number) {
   const parsed = pageInBookSchema.safeParse({ bookId, page });
@@ -43,6 +45,27 @@ export async function saveReadingPosition(bookId: string, page: number) {
   if (saved) {
     revalidatePath("/library");
   }
+}
+
+export async function moveBook(bookId: string, bookcaseId: string): Promise<MoveBookResult> {
+  const parsedBookId = idSchema.safeParse(bookId);
+  const parsedBookcaseId = idSchema.safeParse(bookcaseId);
+
+  if (!parsedBookId.success || !parsedBookcaseId.success) {
+    return { ok: false, error: "That book could not be moved." };
+  }
+
+  const { user } = await requireSession();
+  const bookcase = await moveBookForUser(user.id, parsedBookId.data, parsedBookcaseId.data);
+
+  if (!bookcase) {
+    return { ok: false, error: "That book could not be moved." };
+  }
+
+  revalidatePath("/library");
+  revalidatePath(`/read/${parsedBookId.data}`);
+
+  return { ok: true, bookcaseName: bookcase.name };
 }
 
 export async function toggleBookmark(bookId: string, page: number): Promise<BookmarkResult> {

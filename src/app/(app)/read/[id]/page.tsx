@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { MoveBookButton } from "@/components/reader/MoveBookButton";
 import { Reader } from "@/components/reader/Reader";
+import { getMoveOptions } from "@/server/book-placement";
 import { listBookmarkPages } from "@/server/bookmarks";
 import { getReadableBook } from "@/server/books";
 import { listHighlights } from "@/server/highlights";
@@ -29,11 +31,16 @@ export default async function ReadPage({ params }: ReadPageProps) {
     notFound();
   }
 
-  const [bookmarks, highlights, savedWords] = await Promise.all([
+  const [bookmarks, highlights, savedWords, moveOptions] = await Promise.all([
     listBookmarkPages(user.id, book.id),
     listHighlights(user.id, book.id),
     listSavedWords(user.id, book.id),
+    getMoveOptions(user.id, book.id),
   ]);
+
+  if (!moveOptions) {
+    notFound();
+  }
 
   const byline = [book.author, `${book.bookcase.name} bookcase`].filter(Boolean).join(", ");
 
@@ -53,7 +60,9 @@ export default async function ReadPage({ params }: ReadPageProps) {
           <h1 className="max-w-full truncate font-display text-lg font-semibold text-ink-strong">{book.title}</h1>
           <span className="max-w-full truncate text-[13px] text-ink-soft">{byline}</span>
         </div>
-        <span className="hidden w-[8.5rem] md:block" aria-hidden="true" />
+        <div className="flex justify-end md:w-[8.5rem]">
+          <MoveBookButton bookId={book.id} currentBookcaseId={moveOptions.currentBookcaseId} bookcases={moveOptions.bookcases} />
+        </div>
       </header>
 
       <Reader
