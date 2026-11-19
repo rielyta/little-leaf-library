@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { db } from "@/server/db";
 
 type NewBook = {
@@ -30,4 +31,27 @@ export async function findOwnedBook(userId: string, bookId: string) {
     where: { id: bookId, userId },
     select: { id: true, title: true, fileKey: true },
   });
+}
+
+export const getReadableBook = cache(async (userId: string, bookId: string) => {
+  return db.book.findFirst({
+    where: { id: bookId, userId },
+    select: {
+      id: true,
+      title: true,
+      author: true,
+      pageCount: true,
+      lastReadPage: true,
+      bookcase: { select: { name: true } },
+    },
+  });
+});
+
+export async function saveLastReadPage(userId: string, bookId: string, page: number) {
+  const { count } = await db.book.updateMany({
+    where: { id: bookId, userId, pageCount: { gte: page } },
+    data: { lastReadPage: page },
+  });
+
+  return count > 0;
 }
