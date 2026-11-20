@@ -29,6 +29,7 @@ model User {
   username        String?     @unique
   displayUsername String?
   avatar          String      @default("cat-0")
+  libraryName     String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 

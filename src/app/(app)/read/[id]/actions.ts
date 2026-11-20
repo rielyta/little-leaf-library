@@ -8,7 +8,6 @@ import { highlightColorSchema, highlightNoteSchema, newHighlightSchema } from "@
 import { newSavedWordSchema } from "@/lib/validation/translate";
 import { moveBookForUser } from "@/server/book-placement";
 import { toggleBookmarkForUser } from "@/server/bookmarks";
-import { saveLastReadPage } from "@/server/books";
 import {
   createHighlightForUser,
   deleteHighlightForUser,
@@ -31,21 +30,6 @@ export type BookmarkResult = { ok: true; bookmarks: number[] } | { ok: false; er
 export type CreateHighlightResult = { ok: true; highlight: Highlight } | { ok: false; error: string };
 export type SaveWordResult = { ok: true; word: SavedWord } | { ok: false; error: string };
 export type MoveBookResult = { ok: true; bookcaseName: string } | { ok: false; error: string };
-
-export async function saveReadingPosition(bookId: string, page: number) {
-  const parsed = pageInBookSchema.safeParse({ bookId, page });
-
-  if (!parsed.success) {
-    return;
-  }
-
-  const { user } = await requireSession();
-  const saved = await saveLastReadPage(user.id, parsed.data.bookId, parsed.data.page);
-
-  if (saved) {
-    revalidatePath("/library");
-  }
-}
 
 export async function moveBook(bookId: string, bookcaseId: string): Promise<MoveBookResult> {
   const parsedBookId = idSchema.safeParse(bookId);

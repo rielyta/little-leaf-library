@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Fredoka, Lora, Nunito } from "next/font/google";
+import { Fredoka, Lora, Nunito, Pacifico } from "next/font/google";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -22,6 +22,12 @@ const lora = Lora({
   variable: "--font-lora",
 });
 
+const pacifico = Pacifico({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-pacifico",
+});
+
 export const metadata: Metadata = {
   title: {
     default: "Little Leaf Library",
@@ -36,7 +42,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     <html
       lang="en"
       data-scroll-behavior="smooth"
-      className={`${fredoka.variable} ${nunito.variable} ${lora.variable}`}
+      className={`${fredoka.variable} ${nunito.variable} ${lora.variable} ${pacifico.variable}`}
     >
       <body className="bg-cream font-sans text-ink antialiased">{children}</body>
     </html>

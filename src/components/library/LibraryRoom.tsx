@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bookcase } from "@/components/library/Bookcase";
+import { LibraryPet } from "@/components/library/LibraryPet";
+import { LibrarySign } from "@/components/library/LibrarySign";
 import { NewBookcaseSlot } from "@/components/library/NewBookcaseSlot";
 import { RoomBackdrop } from "@/components/library/RoomBackdrop";
 import type { BookcaseSummary } from "@/lib/bookcases";
@@ -11,6 +13,8 @@ const BOOKCASE_STEP = 344;
 
 type LibraryRoomProps = {
   bookcases: BookcaseSummary[];
+  libraryName: string;
+  avatar: string;
 };
 
 function ArrowButton({ direction, disabled, onClick }: { direction: "prev" | "next"; disabled: boolean; onClick: () => void }) {
@@ -21,7 +25,7 @@ function ArrowButton({ direction, disabled, onClick }: { direction: "prev" | "ne
       disabled={disabled}
       aria-label={direction === "prev" ? "Previous bookcase" : "Next bookcase"}
       className={cn(
-        "absolute top-[46%] z-40 flex size-13 items-center justify-center rounded-full border-[1.5px] border-ink bg-paper transition-opacity disabled:opacity-40",
+        "absolute top-[50%] z-40 flex size-13 items-center justify-center rounded-full border-[1.5px] border-ink bg-paper transition-opacity disabled:opacity-40",
         direction === "prev" ? "left-5" : "right-5",
       )}
     >
@@ -32,7 +36,7 @@ function ArrowButton({ direction, disabled, onClick }: { direction: "prev" | "ne
   );
 }
 
-export function LibraryRoom({ bookcases }: LibraryRoomProps) {
+export function LibraryRoom({ bookcases, libraryName, avatar }: LibraryRoomProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
   const [atEnd, setAtEnd] = useState(false);
@@ -86,19 +90,25 @@ export function LibraryRoom({ bookcases }: LibraryRoomProps) {
       <main className="relative flex flex-1 flex-col justify-end overflow-hidden bg-blush-100">
         <RoomBackdrop />
 
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-4">
+          <LibrarySign name={libraryName} />
+        </div>
+
         <ArrowButton direction="prev" disabled={active === 0} onClick={() => step(-1)} />
         <ArrowButton direction="next" disabled={atEnd} onClick={() => step(1)} />
 
         <div
           ref={scrollerRef}
           onScroll={syncPosition}
-          className="scrollbar-none relative flex snap-x snap-mandatory items-end gap-11 overflow-x-auto scroll-px-24 px-24 pb-21 pt-17.5"
+          className="scrollbar-none relative flex snap-x snap-mandatory items-end gap-11 overflow-x-auto scroll-px-24 px-24 pb-21 pt-32"
         >
           {bookcases.map((bookcase, index) => (
             <Bookcase key={bookcase.id} bookcase={bookcase} index={index} />
           ))}
           <NewBookcaseSlot className="mb-3.5 h-119.5" />
         </div>
+
+        <LibraryPet avatar={avatar} />
       </main>
     </div>
   );

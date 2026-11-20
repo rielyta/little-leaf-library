@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { Document, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
-import { saveReadingPosition } from "@/app/(app)/read/[id]/actions";
 import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { HighlightMenu, NoteEditor, SelectionToolbar } from "@/components/reader/HighlightToolbars";
 import { NotesPanel } from "@/components/reader/NotesPanel";
@@ -18,6 +17,7 @@ import { useFullscreen } from "@/components/reader/useFullscreen";
 import { useHighlights } from "@/components/reader/useHighlights";
 import { usePageImages } from "@/components/reader/usePageImages";
 import { usePageTurn } from "@/components/reader/usePageTurn";
+import { useReadingProgress } from "@/components/reader/useReadingProgress";
 import { useSavedWords } from "@/components/reader/useSavedWords";
 import { useTextSelection, type FloatingAnchor, type PendingSelection } from "@/components/reader/useTextSelection";
 import { useTranslateLanguage } from "@/components/reader/useTranslateLanguage";
@@ -53,7 +53,6 @@ const DEFAULT_PAGE_RATIO = 0.707;
 const BOOK_PADDING = 10;
 const BOOK_BORDER = 2;
 const BOOK_FRAME_INSET = BOOK_PADDING + BOOK_BORDER;
-const SAVE_DELAY_MS = 800;
 const DRAG_COMPLETE_THRESHOLD = 0.25;
 const CLICK_TOLERANCE_PX = 4;
 
@@ -111,7 +110,6 @@ export function BookReader({
   const [stageRef, stageSize] = useElementSize<HTMLDivElement>();
   const bookRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
-  const hasMountedRef = useRef(false);
 
   const { zoom, canZoomIn, canZoomOut, zoomIn, zoomOut, resetZoom } = useZoom();
   const fullscreen = useFullscreen<HTMLDivElement>();
@@ -150,7 +148,8 @@ export function BookReader({
   const activeHighlightData = activeHighlight ? findHighlight(activeHighlight.id) : undefined;
   const editingHighlight = noteEditor?.kind === "edit" ? findHighlight(noteEditor.highlightId) : undefined;
   const readerError = bookmarks.error ?? highlights.error ?? savedWords.error;
-  const notesCount = bookmarks.bookmarks.length + highlights.highlights.length + savedWords.words.length;
+
+  useReadingProgress(bookId, currentFurthest);
 
   function closeFloatingUi() {
     setActiveHighlight(null);
@@ -202,19 +201,6 @@ export function BookReader({
 
     void request(pages);
   }, [view, mode, pageCount, maxView, request]);
-
-  useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      void saveReadingPosition(bookId, currentFurthest);
-    }, SAVE_DELAY_MS);
-
-    return () => clearTimeout(timer);
-  }, [bookId, currentFurthest]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -445,7 +431,7 @@ export function BookReader({
 
           <ZoomControls zoom={zoom} canZoomIn={canZoomIn} canZoomOut={canZoomOut} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} />
 
-          <ToolbarButton label="Notes" active={isNotesOpen} onClick={() => setIsNotesOpen((open) => !open)} badge={notesCount}>
+          <ToolbarButton label="Notes" active={isNotesOpen} onClick={() => setIsNotesOpen((open) => !open)}>
             <NotesIcon />
           </ToolbarButton>
 

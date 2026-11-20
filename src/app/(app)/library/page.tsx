@@ -2,10 +2,17 @@ import type { Metadata } from "next";
 import { AppHeader } from "@/components/app/AppHeader";
 import { AddBookDialog } from "@/components/library/AddBookDialog";
 import { BookcaseDialog } from "@/components/library/BookcaseDialog";
+import { DeleteBookcaseDialog } from "@/components/library/DeleteBookcaseDialog";
 import { EmptyLibrary } from "@/components/library/EmptyLibrary";
+import { LibraryNameDialog } from "@/components/library/LibraryNameDialog";
 import { LibraryRoom } from "@/components/library/LibraryRoom";
+import { LibrarySign } from "@/components/library/LibrarySign";
+import { ManageBooksDialog } from "@/components/library/ManageBooksDialog";
 import { ButtonLink } from "@/components/ui/ButtonLink";
+import { DEFAULT_AVATAR } from "@/lib/avatars";
+import { defaultLibraryName, displayLibraryName } from "@/lib/library";
 import { listBookcases } from "@/server/bookcases";
+import { getLibraryName } from "@/server/library";
 import { requireSession } from "@/server/session";
 
 export const metadata: Metadata = {
@@ -13,14 +20,26 @@ export const metadata: Metadata = {
 };
 
 type LibraryPageProps = {
-  searchParams: Promise<{ new?: string; edit?: string; bookcase?: string }>;
+  searchParams: Promise<{
+    new?: string;
+    edit?: string;
+    bookcase?: string;
+    remove?: string;
+    manage?: string;
+    rename?: string;
+  }>;
 };
 
 export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   const { user } = await requireSession();
-  const [bookcases, params] = await Promise.all([listBookcases(user.id), searchParams]);
+  const [bookcases, savedName, params] = await Promise.all([listBookcases(user.id), getLibraryName(user.id), searchParams]);
 
-  const editingBookcase = params.edit ? bookcases.find((bookcase) => bookcase.id === params.edit) : undefined;
+  const libraryName = displayLibraryName(savedName, user.name);
+  const findBookcase = (id?: string) => (id ? bookcases.find((bookcase) => bookcase.id === id) : undefined);
+
+  const editingBookcase = findBookcase(params.edit);
+  const removingBookcase = findBookcase(params.remove);
+  const managingBookcase = findBookcase(params.manage);
   const isBookcaseDialogOpen = params.new === "bookcase" || Boolean(editingBookcase);
   const isAddingBook = params.new === "book";
   const bookcaseOptions = bookcases.map(({ id, name }) => ({ id, name }));
@@ -31,19 +50,43 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
         {bookcases.length > 0 && <ButtonLink href="/library?new=book">Add book</ButtonLink>}
       </AppHeader>
 
-      {bookcases.length === 0 ? <EmptyLibrary name={user.name} /> : <LibraryRoom bookcases={bookcases} />}
+      {bookcases.length === 0 ? (
+        <>
+          <div className="flex justify-center bg-blush-100 px-4 pb-4">
+            <LibrarySign name={libraryName} />
+          </div>
+          <EmptyLibrary name={user.name} />
+        </>
+      ) : (
+        <LibraryRoom bookcases={bookcases} libraryName={libraryName} avatar={user.avatar ?? DEFAULT_AVATAR} />
+      )}
 
       <BookcaseDialog
         key={`bookcase-${isBookcaseDialogOpen}-${editingBookcase?.id ?? "new"}`}
         open={isBookcaseDialogOpen}
         bookcase={editingBookcase && { id: editingBookcase.id, name: editingBookcase.name, wood: editingBookcase.wood }}
       />
+
       <AddBookDialog
         key={`book-${isAddingBook}-${params.bookcase ?? ""}`}
         open={isAddingBook}
         bookcases={bookcaseOptions}
         defaultBookcaseId={params.bookcase}
       />
+
+      {removingBookcase && (
+        <DeleteBookcaseDialog
+          key={`remove-${removingBookcase.id}`}
+          bookcase={{ id: removingBookcase.id, name: removingBookcase.name, bookCount: removingBookcase.books.length }}
+          otherBookcases={bookcaseOptions.filter((option) => option.id !== removingBookcase.id)}
+        />
+      )}
+
+      {managingBookcase && (
+        <ManageBooksDialog key={`manage-${managingBookcase.id}`} bookcaseName={managingBookcase.name} books={managingBookcase.books} />
+      )}
+
+      {params.rename === "library" && <LibraryNameDialog savedName={savedName} defaultName={defaultLibraryName(user.name)} />}
     </>
   );
 }
