@@ -10,10 +10,14 @@ import { authClient } from "@/lib/auth-client";
 import { loginSchema, type LoginValues } from "@/lib/validation/auth";
 import { toFieldErrors, type FieldErrors } from "@/lib/validation/errors";
 
+const EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
+const TOO_MANY_REQUESTS = 429;
+
 export function LoginForm() {
   const router = useRouter();
   const [errors, setErrors] = useState<FieldErrors<LoginValues>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -28,6 +32,7 @@ export function LoginForm() {
 
     setErrors({});
     setFormError(null);
+    setNeedsVerification(false);
     setPending(true);
 
     const { identifier, password } = parsed.data;
@@ -36,7 +41,14 @@ export function LoginForm() {
       : await authClient.signIn.username({ username: identifier, password });
 
     if (error) {
-      setFormError("That email or username and password do not match.");
+      if (error.status === TOO_MANY_REQUESTS) {
+        setFormError("Too many attempts. Please wait a minute, then try again.");
+      } else if (error.code === EMAIL_NOT_VERIFIED || error.status === 403) {
+        setNeedsVerification(true);
+      } else {
+        setFormError("That email or username and password do not match.");
+      }
+
       setPending(false);
       return;
     }
@@ -48,6 +60,16 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3.5">
       <FormAlert message={formError} />
+
+      {needsVerification && (
+        <div role="alert" className="flex flex-col gap-1.5 rounded-2xl border-[1.5px] border-mist-200 bg-mist-50 px-4 py-3 text-sm leading-relaxed text-mist-800">
+          <strong>Please verify your email first.</strong>
+          <span>We just sent a fresh verification link to your inbox. Open it, then come back to log in.</span>
+          <Link href="/verify-email" className="self-start font-extrabold text-sage-700 underline underline-offset-2">
+            Did not get it?
+          </Link>
+        </div>
+      )}
 
       <TextField
         label="Email or username"

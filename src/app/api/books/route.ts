@@ -7,10 +7,11 @@ import { bookSchema } from "@/lib/validation/book";
 import { toFieldErrors } from "@/lib/validation/errors";
 import { findOwnedBookcase } from "@/server/bookcases";
 import { createBookForUser } from "@/server/books";
+import { checkRateLimits, RATE_LIMITS, waitLabel } from "@/server/rate-limit";
 import { bookFileKey, deleteStoredFile, saveStoredFile } from "@/server/storage";
 
-function errorResponse(status: number, error: string, fieldErrors?: Record<string, string | undefined>) {
-  return Response.json({ error, fieldErrors }, { status });
+function errorResponse(status: number, error: string, fieldErrors?: Record<string, string | undefined>, headers?: HeadersInit) {
+  return Response.json({ error, fieldErrors }, { status, headers });
 }
 
 function textField(formData: FormData, name: string) {
@@ -23,6 +24,17 @@ export async function POST(request: Request) {
 
   if (!session) {
     return errorResponse(401, "Please log in again.");
+  }
+
+  const limit = await checkRateLimits(session.user.id, [RATE_LIMITS.uploadPerHour]);
+
+  if (!limit.allowed) {
+    return errorResponse(
+      429,
+      `You have added a lot of books in a short time. Please try again in ${waitLabel(limit.retryAfterSeconds)}.`,
+      undefined,
+      { "Retry-After": String(limit.retryAfterSeconds) },
+    );
   }
 
   const formData = await request.formData();

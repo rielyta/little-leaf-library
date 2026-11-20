@@ -1,5 +1,6 @@
 import { normalizeSelection } from "@/lib/translate";
 import { translateQuerySchema } from "@/lib/validation/translate";
+import { checkRateLimits, RATE_LIMITS, tooManyRequests, waitLabel } from "@/server/rate-limit";
 import { getSession } from "@/server/session";
 import { translateSelection } from "@/server/translate";
 
@@ -18,6 +19,15 @@ export async function GET(request: Request) {
 
   if (!parsed.success) {
     return Response.json({ error: "That text cannot be translated." }, { status: 400 });
+  }
+
+  const limit = await checkRateLimits(session.user.id, [RATE_LIMITS.translatePerMinute, RATE_LIMITS.translatePerDay]);
+
+  if (!limit.allowed) {
+    return tooManyRequests(
+      limit.retryAfterSeconds,
+      `You have translated a lot just now. Please try again in ${waitLabel(limit.retryAfterSeconds)}.`,
+    );
   }
 
   const result = await translateSelection(parsed.data.text, parsed.data.to);

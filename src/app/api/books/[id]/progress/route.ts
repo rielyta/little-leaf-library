@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { saveLastReadPage } from "@/server/books";
+import { saveReadingProgress } from "@/server/reading-progress";
 import { getSession } from "@/server/session";
 
 const progressSchema = z.object({
@@ -24,7 +24,7 @@ export async function PUT(request: Request, { params }: ProgressRouteContext) {
     return new Response(null, { status: 400 });
   }
 
-  const saved = await saveLastReadPage(session.user.id, id, parsed.data.page);
+  const saved = await saveReadingProgress(session.user.id, id, parsed.data.page);
 
   return new Response(null, { status: saved ? 204 : 404 });
 }

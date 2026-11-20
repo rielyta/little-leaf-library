@@ -9,6 +9,9 @@ import { authClient } from "@/lib/auth-client";
 import { registerSchema, type RegisterValues } from "@/lib/validation/auth";
 import { toFieldErrors, type FieldErrors } from "@/lib/validation/errors";
 
+const VERIFIED_CALLBACK_URL = "/verified";
+const TOO_MANY_REQUESTS = 429;
+
 export function RegisterForm() {
   const router = useRouter();
   const [errors, setErrors] = useState<FieldErrors<RegisterValues>>({});
@@ -30,16 +33,25 @@ export function RegisterForm() {
     setPending(true);
 
     const { username, name, email, password } = parsed.data;
-    const { error } = await authClient.signUp.email({ username, name, email, password });
+    const { error } = await authClient.signUp.email({
+      username,
+      name,
+      email,
+      password,
+      callbackURL: VERIFIED_CALLBACK_URL,
+    });
 
     if (error) {
-      setFormError(error.message ?? "We could not create your account. Please try again.");
+      setFormError(
+        error.status === TOO_MANY_REQUESTS
+          ? "Too many accounts were created from this network. Please try again later."
+          : (error.message ?? "We could not create your account. Please try again."),
+      );
       setPending(false);
       return;
     }
 
-    router.push("/library");
-    router.refresh();
+    router.push(`/verify-email?email=${encodeURIComponent(email)}`);
   }
 
   return (

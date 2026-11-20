@@ -8,9 +8,14 @@ import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/li
 import { db } from "@/server/db";
 import { sendEmail } from "@/server/email";
 import { resetPasswordEmail } from "@/server/emails/reset-password";
+import { verifyEmailEmail } from "@/server/emails/verify-email";
 import { generateUniqueUsername } from "@/server/username";
 
 const RESET_TOKEN_LIFETIME_SECONDS = 60 * 60;
+const VERIFY_TOKEN_LIFETIME_SECONDS = 60 * 60 * 24;
+
+const MINUTE = 60;
+const HOUR = 60 * MINUTE;
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -31,12 +36,38 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
     minPasswordLength: PASSWORD_MIN_LENGTH,
     maxPasswordLength: PASSWORD_MAX_LENGTH,
     resetPasswordTokenExpiresIn: RESET_TOKEN_LIFETIME_SECONDS,
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
       deliver(user.email, resetPasswordEmail({ name: user.name, url }));
+    },
+  },
+
+  emailVerification: {
+    sendOnSignUp: true,
+    sendOnSignIn: true,
+    autoSignInAfterVerification: true,
+    expiresIn: VERIFY_TOKEN_LIFETIME_SECONDS,
+    sendVerificationEmail: async ({ user, url }) => {
+      deliver(user.email, verifyEmailEmail({ name: user.name, url }));
+    },
+  },
+
+  rateLimit: {
+    enabled: true,
+    storage: "database",
+    window: MINUTE,
+    max: 100,
+    customRules: {
+      "/sign-in/email": { window: MINUTE, max: 5 },
+      "/sign-in/username": { window: MINUTE, max: 5 },
+      "/sign-up/email": { window: HOUR, max: 5 },
+      "/request-password-reset": { window: 15 * MINUTE, max: 3 },
+      "/send-verification-email": { window: 15 * MINUTE, max: 3 },
+      "/get-session": false,
     },
   },
 

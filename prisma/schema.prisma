@@ -190,3 +190,20 @@ model Verification {
   @@index([identifier])
   @@map("verification")
 }
+
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+
+  @@map("rate_limit")
+}
+
+model RequestLimit {
+  key         String   @id
+  count       Int
+  windowStart DateTime @default(now())
+
+  @@map("request_limit")
+}
