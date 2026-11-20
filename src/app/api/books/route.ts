@@ -6,7 +6,7 @@ import { fileTooLargeMessage, hasRoomFor, MAX_BOOK_FILE_BYTES, quotaExceededMess
 import { toFieldErrors } from "@/lib/validation/errors";
 import { finishUploadSchema } from "@/lib/validation/upload";
 import { findOwnedBookcase } from "@/server/bookcases";
-import { createBookForUser } from "@/server/books";
+import { createBookForUser, findOwnedBook } from "@/server/books";
 import { bookFileKey, deleteStoredFile, pendingUploadKey, readStoredFile, saveStoredFile } from "@/server/storage";
 import { getStorageUsage } from "@/server/storage-quota";
 
@@ -16,6 +16,11 @@ type PendingRead = { status: "found"; bytes: Uint8Array } | { status: "missing" 
 
 function errorResponse(status: number, error: string, fieldErrors?: Record<string, string | undefined>) {
   return Response.json({ error, fieldErrors }, { status });
+}
+
+function shelvedResponse(id: string, status: 200 | 201) {
+  revalidatePath("/library");
+  return Response.json({ id }, { status });
 }
 
 function wait(milliseconds: number) {
@@ -28,7 +33,11 @@ function isMissingObject(error: unknown) {
   }
 
   const metadata = (error as { $metadata?: { httpStatusCode?: number } }).$metadata;
-  return error.name === "NoSuchKey" || error.name === "NotFound" || metadata?.httpStatusCode === 404 || "code" in error && error.code === "ENOENT";
+  return error.name === "NoSuchKey" || error.name === "NotFound" || metadata?.httpStatusCode === 404 || ("code" in error && error.code === "ENOENT");
+}
+
+function isDuplicateRecord(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }
 
 async function readPendingUpload(key: string): Promise<PendingRead> {
@@ -43,6 +52,11 @@ async function readPendingUpload(key: string): Promise<PendingRead> {
       return { status: "found", bytes: await readStoredFile(key) };
     } catch (error) {
       missing = isMissingObject(error);
+
+      if (missing) {
+        break;
+      }
+
       console.error("[books] Could not read pending upload", error);
     }
   }
@@ -67,6 +81,10 @@ export async function POST(request: Request) {
   const { uploadId, title, author, bookcaseId, spineColor } = parsed.data;
   const pendingKey = pendingUploadKey(userId, uploadId);
 
+  if (await findOwnedBook(userId, uploadId)) {
+    return shelvedResponse(uploadId, 200);
+  }
+
   const bookcase = await findOwnedBookcase(userId, bookcaseId);
 
   if (!bookcase) {
@@ -76,6 +94,10 @@ export async function POST(request: Request) {
   const pending = await readPendingUpload(pendingKey);
 
   if (pending.status === "missing") {
+    if (await findOwnedBook(userId, uploadId)) {
+      return shelvedResponse(uploadId, 200);
+    }
+
     return errorResponse(400, "We could not find your upload. Please choose the file again.");
   }
 
@@ -84,6 +106,7 @@ export async function POST(request: Request) {
   }
 
   const { bytes } = pending;
+  let alreadyShelved = false;
 
   try {
     if (bytes.byteLength > MAX_BOOK_FILE_BYTES) {
@@ -124,14 +147,16 @@ export async function POST(request: Request) {
         spineColor,
       });
     } catch (error) {
-      await deleteStoredFile(fileKey);
-      throw error;
+      if (isDuplicateRecord(error) && (await findOwnedBook(userId, uploadId))) {
+        alreadyShelved = true;
+      } else {
+        await deleteStoredFile(fileKey);
+        throw error;
+      }
     }
   } finally {
     await deleteStoredFile(pendingKey);
   }
 
-  revalidatePath("/library");
-
-  return Response.json({ id: uploadId }, { status: 201 });
+  return shelvedResponse(uploadId, alreadyShelved ? 200 : 201);
 }
