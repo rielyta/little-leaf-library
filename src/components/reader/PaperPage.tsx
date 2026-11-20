@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { Page } from "react-pdf";
 import { NoteIcon } from "@/components/reader/HighlightToolbars";
 import type { FloatingAnchor } from "@/components/reader/useTextSelection";
@@ -65,7 +65,7 @@ export function PaperPage({
     >
       {image && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={image} alt="" draggable={false} className="absolute inset-0 size-full select-none" />
+        <img src={image} alt="" draggable={false} decoding="sync" className="absolute inset-0 size-full select-none" />
       )}
 
       {pageNumber && !image && (
@@ -93,14 +93,16 @@ export function PaperPage({
 
       {pageNumber && withTextLayer && (
         <div className="absolute inset-0 [&_.react-pdf\_\_Page]:!bg-transparent">
-          <Page
-            pageNumber={pageNumber}
-            width={width}
-            renderMode="none"
-            renderTextLayer
-            renderAnnotationLayer={false}
-            loading={null}
-          />
+          <Suspense fallback={null}>
+            <Page
+              pageNumber={pageNumber}
+              width={width}
+              renderMode="none"
+              renderTextLayer
+              renderAnnotationLayer={false}
+              loading={null}
+            />
+          </Suspense>
         </div>
       )}
 

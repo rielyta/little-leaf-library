@@ -323,7 +323,7 @@ export function BookReader({
         withTextLayer={isSettled}
         onOpenNote={isSettled ? openNote : undefined}
       >
-        {pageNumber && isSettled && (
+        {pageNumber && (
           <BookmarkRibbon page={pageNumber} side={side} active={bookmarks.isBookmarked(pageNumber)} onToggle={bookmarks.toggle} />
         )}
       </PaperPage>
