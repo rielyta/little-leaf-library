@@ -3,9 +3,9 @@ import { Logo } from "@/components/brand/Logo";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 
 const navLinks = [
-  { href: "#about", label: "About" },
-  { href: "#reading", label: "Reading" },
-  { href: "#how-it-works", label: "How it works" },
+  { href: "/#about", label: "About" },
+  { href: "/#reading", label: "Reading" },
+  { href: "/#how-it-works", label: "How it works" },
 ];
 
 export function SiteHeader() {
