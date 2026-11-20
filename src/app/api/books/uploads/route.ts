@@ -1,13 +1,53 @@
-import { randomUUID } from "node:crypto";
+import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
+import { hasPdfSignature } from "@/lib/books";
+import { readPdfInfo } from "@/lib/pdf-info";
 import { fileTooLargeMessage, hasRoomFor, MAX_BOOK_FILE_BYTES, quotaExceededMessage } from "@/lib/storage-quota";
-import { uploadRequestSchema } from "@/lib/validation/upload";
-import { checkRateLimits, RATE_LIMITS, waitLabel } from "@/server/rate-limit";
-import { deleteStoredFolder, getUploadUrl, pendingFolder, pendingUploadKey } from "@/server/storage";
+import { toFieldErrors } from "@/lib/validation/errors";
+import { finishUploadSchema } from "@/lib/validation/upload";
+import { findOwnedBookcase } from "@/server/bookcases";
+import { createBookForUser } from "@/server/books";
+import { bookFileKey, deleteStoredFile, pendingUploadKey, readStoredFile, saveStoredFile } from "@/server/storage";
 import { getStorageUsage } from "@/server/storage-quota";
 
-function errorResponse(status: number, error: string, headers?: HeadersInit) {
-  return Response.json({ error }, { status, headers });
+const READ_RETRY_DELAYS_MS = [0, 400, 1200];
+
+type PendingRead = { status: "found"; bytes: Uint8Array } | { status: "missing" } | { status: "unavailable" };
+
+function errorResponse(status: number, error: string, fieldErrors?: Record<string, string | undefined>) {
+  return Response.json({ error, fieldErrors }, { status });
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isMissingObject(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const metadata = (error as { $metadata?: { httpStatusCode?: number } }).$metadata;
+  return error.name === "NoSuchKey" || error.name === "NotFound" || metadata?.httpStatusCode === 404 || "code" in error && error.code === "ENOENT";
+}
+
+async function readPendingUpload(key: string): Promise<PendingRead> {
+  let missing = false;
+
+  for (const delay of READ_RETRY_DELAYS_MS) {
+    if (delay > 0) {
+      await wait(delay);
+    }
+
+    try {
+      return { status: "found", bytes: await readStoredFile(key) };
+    } catch (error) {
+      missing = isMissingObject(error);
+      console.error("[books] Could not read pending upload", error);
+    }
+  }
+
+  return missing ? { status: "missing" } : { status: "unavailable" };
 }
 
 export async function POST(request: Request) {
@@ -17,38 +57,81 @@ export async function POST(request: Request) {
     return errorResponse(401, "Please log in again.");
   }
 
-  const parsed = uploadRequestSchema.safeParse(await request.json().catch(() => null));
+  const parsed = finishUploadSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
-    return errorResponse(400, "Choose a PDF file to upload.");
+    return errorResponse(400, "Please check the highlighted fields.", toFieldErrors(parsed.error));
   }
 
-  const { size } = parsed.data;
+  const userId = session.user.id;
+  const { uploadId, title, author, bookcaseId, spineColor } = parsed.data;
+  const pendingKey = pendingUploadKey(userId, uploadId);
 
-  if (size > MAX_BOOK_FILE_BYTES) {
-    return errorResponse(413, fileTooLargeMessage(size));
+  const bookcase = await findOwnedBookcase(userId, bookcaseId);
+
+  if (!bookcase) {
+    return errorResponse(404, "That bookcase could not be found.");
   }
 
-  const usage = await getStorageUsage(session.user.id);
+  const pending = await readPendingUpload(pendingKey);
 
-  if (!hasRoomFor(usage, size)) {
-    return errorResponse(413, quotaExceededMessage(size, usage));
+  if (pending.status === "missing") {
+    return errorResponse(400, "We could not find your upload. Please choose the file again.");
   }
 
-  const limit = await checkRateLimits(session.user.id, [RATE_LIMITS.uploadPerHour]);
-
-  if (!limit.allowed) {
-    return errorResponse(
-      429,
-      `You have added a lot of books in a short time. Please try again in ${waitLabel(limit.retryAfterSeconds)}.`,
-      { "Retry-After": String(limit.retryAfterSeconds) },
-    );
+  if (pending.status === "unavailable") {
+    return errorResponse(503, "Our book storage is a little busy right now. Please press Put on shelf again in a moment.");
   }
 
-  await deleteStoredFolder(pendingFolder(session.user.id));
+  const { bytes } = pending;
 
-  const uploadId = randomUUID();
-  const remoteUrl = await getUploadUrl(pendingUploadKey(session.user.id, uploadId));
+  try {
+    if (bytes.byteLength > MAX_BOOK_FILE_BYTES) {
+      return errorResponse(413, fileTooLargeMessage(bytes.byteLength));
+    }
 
-  return Response.json({ uploadId, url: remoteUrl ?? `/api/books/uploads/${uploadId}` });
+    const usage = await getStorageUsage(userId);
+
+    if (!hasRoomFor(usage, bytes.byteLength)) {
+      return errorResponse(413, quotaExceededMessage(bytes.byteLength, usage));
+    }
+
+    if (!hasPdfSignature(bytes)) {
+      return errorResponse(400, "This file is not a PDF.");
+    }
+
+    let pageCount: number;
+
+    try {
+      ({ pageCount } = await readPdfInfo(bytes));
+    } catch {
+      return errorResponse(400, "We could not read this PDF. It may be damaged or protected with a password.");
+    }
+
+    const fileKey = bookFileKey(userId, uploadId);
+    await saveStoredFile(fileKey, bytes);
+
+    try {
+      await createBookForUser({
+        id: uploadId,
+        fileKey,
+        pageCount,
+        fileSize: bytes.byteLength,
+        userId,
+        bookcaseId: bookcase.id,
+        title,
+        author: author || null,
+        spineColor,
+      });
+    } catch (error) {
+      await deleteStoredFile(fileKey);
+      throw error;
+    }
+  } finally {
+    await deleteStoredFile(pendingKey);
+  }
+
+  revalidatePath("/library");
+
+  return Response.json({ id: uploadId }, { status: 201 });
 }
