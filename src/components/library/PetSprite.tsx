@@ -1,16 +1,22 @@
 import type { CSSProperties, Ref } from "react";
 import type { AvatarAnimal, AvatarPalette } from "@/lib/avatars";
 
-export type PetPose = "stand" | "sit" | "groom" | "sleep" | "stretch";
+export type PetPose = "stand" | "sit" | "groom" | "sleep" | "stretch" | "bat";
+export type PetExpression = "neutral" | "happy" | "sleepy" | "yawn" | "licking";
 
 const LINE = "#6B4A3A";
 const EYE = "#3F3128";
 const BLUSH = "#F4B9C7";
 const NOSE = "#E79AAE";
+const MOUTH = "#B9606F";
 const CREAM = "#FFFDF8";
 const SHADOW = "#A9CCD8";
 
 const STROKE = 1.6;
+
+const PIVOT_CENTER: CSSProperties = { transformBox: "fill-box", transformOrigin: "50% 50%" };
+const PIVOT_TOP: CSSProperties = { transformBox: "fill-box", transformOrigin: "50% 0" };
+const PIVOT_BOTTOM: CSSProperties = { transformBox: "fill-box", transformOrigin: "50% 100%" };
 
 type Layout = {
   body: { cx: number; cy: number; rx: number; ry: number; tilt: number };
@@ -24,22 +30,30 @@ const LAYOUT: Record<PetPose, Layout> = {
   groom: { body: { cx: 40, cy: 53, rx: 15.5, ry: 14, tilt: 0 }, head: { x: -3, y: 0 }, tail: { x: 2, y: 4 } },
   sleep: { body: { cx: 40, cy: 59, rx: 22, ry: 9.5, tilt: 0 }, head: { x: -1, y: 13 }, tail: { x: -2, y: 6 } },
   stretch: { body: { cx: 40, cy: 55, rx: 18, ry: 10, tilt: 14 }, head: { x: 7, y: 13 }, tail: { x: 1, y: -6 } },
+  bat: { body: { cx: 40, cy: 54, rx: 17, ry: 12.5, tilt: 0 }, head: { x: 1, y: -1 }, tail: { x: 0, y: 0 } },
 };
 
-const STAND_FEET = [
-  { x: 26, group: "a" },
-  { x: 33.5, group: "b" },
-  { x: 41, group: "a" },
-  { x: 48.5, group: "b" },
-] as const;
+type Foot = {
+  x: number;
+  group: "a" | "b";
+  side: "front" | "back";
+};
 
-const FOOT_STYLE: CSSProperties = { transformBox: "fill-box", transformOrigin: "50% 0" };
+const STAND_FEET: Foot[] = [
+  { x: 26, group: "a", side: "back" },
+  { x: 33.5, group: "b", side: "back" },
+  { x: 41, group: "a", side: "front" },
+  { x: 48.5, group: "b", side: "front" },
+];
+
+const BAT_FEET = STAND_FEET.slice(0, 3);
 
 type PetSpriteProps = {
   ref?: Ref<SVGSVGElement>;
   animal: AvatarAnimal;
   palette: AvatarPalette;
   pose: PetPose;
+  expression: PetExpression;
   className?: string;
 };
 
@@ -48,31 +62,66 @@ function Ears({ animal, palette }: { animal: AvatarAnimal; palette: AvatarPalett
 
   if (animal === "cat") {
     return (
-      <>
+      <g data-part="ears" style={PIVOT_BOTTOM}>
         <path d="M30.5 25L31.5 11.5l10.5 7.5z" fill={fur} stroke={LINE} strokeWidth={STROKE} strokeLinejoin="round" />
         <path d="M61.5 25L60.5 11.5 50 19z" fill={fur} stroke={LINE} strokeWidth={STROKE} strokeLinejoin="round" />
         <path d="M33 21.5l.6-6.5 5 3.6z" fill={inner} />
         <path d="M59 21.5l-.6-6.5-5 3.6z" fill={inner} />
-      </>
+      </g>
     );
   }
 
   if (animal === "rabbit") {
     return (
-      <>
+      <g data-part="ears" style={PIVOT_BOTTOM}>
         <ellipse cx="39" cy="11" rx="4.6" ry="11" transform="rotate(-10 39 11)" fill={fur} stroke={LINE} strokeWidth={STROKE} />
         <ellipse cx="53" cy="11" rx="4.6" ry="11" transform="rotate(10 53 11)" fill={fur} stroke={LINE} strokeWidth={STROKE} />
         <ellipse cx="39" cy="12.5" rx="2" ry="7.5" transform="rotate(-10 39 12.5)" fill={inner} />
         <ellipse cx="53" cy="12.5" rx="2" ry="7.5" transform="rotate(10 53 12.5)" fill={inner} />
-      </>
+      </g>
     );
   }
 
   return null;
 }
 
-function Head({ animal, palette, eyesClosed, licking }: { animal: AvatarAnimal; palette: AvatarPalette; eyesClosed: boolean; licking: boolean }) {
+function Eyes({ expression }: { expression: PetExpression }) {
+  if (expression === "happy") {
+    return <path d="M37.4 33.4q2.4-3.2 4.8 0M50.1 33.4q2.4-3.2 4.8 0" stroke={EYE} strokeWidth="1.6" fill="none" strokeLinecap="round" />;
+  }
+
+  if (expression !== "neutral") {
+    return <path d="M37.5 32.5q2.4 2 4.8 0M50.2 32.5q2.4 2 4.8 0" stroke={EYE} strokeWidth="1.4" fill="none" strokeLinecap="round" />;
+  }
+
+  return (
+    <g data-part="eyes" style={PIVOT_CENTER}>
+      <circle cx="40" cy="32" r="2.4" fill={EYE} />
+      <circle cx="52.5" cy="32" r="2.4" fill={EYE} />
+      <circle cx="40.8" cy="31.2" r="0.7" fill="#FFFFFF" />
+      <circle cx="53.3" cy="31.2" r="0.7" fill="#FFFFFF" />
+    </g>
+  );
+}
+
+function Mouth({ animal, expression }: { animal: AvatarAnimal; expression: PetExpression }) {
+  if (expression === "yawn") {
+    return <ellipse cx="46.3" cy="39.8" rx="2.2" ry="2.8" fill={MOUTH} stroke={LINE} strokeWidth="1.1" />;
+  }
+
+  const showTongue = expression === "licking" || (expression === "happy" && animal === "dog");
+
+  return (
+    <>
+      <path d="M43.8 37q1.25 1.5 2.5 0q1.25 1.5 2.5 0" stroke={LINE} strokeWidth="1.1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {showTongue && <path d="M46 38.3h3.1v1.3a1.55 1.55 0 0 1-3.1 0z" fill={NOSE} stroke={LINE} strokeWidth="0.8" />}
+    </>
+  );
+}
+
+function Head({ animal, palette, expression }: { animal: AvatarAnimal; palette: AvatarPalette; expression: PetExpression }) {
   const { fur, patch } = palette;
+  const isHappy = expression === "happy";
 
   return (
     <>
@@ -91,28 +140,18 @@ function Head({ animal, palette, eyesClosed, licking }: { animal: AvatarAnimal; 
         </>
       )}
 
-      {eyesClosed ? (
-        <path d="M37.5 32.5q2.4 2 4.8 0M50.2 32.5q2.4 2 4.8 0" stroke={EYE} strokeWidth="1.4" fill="none" strokeLinecap="round" />
-      ) : (
-        <>
-          <circle cx="40" cy="32" r="2.4" fill={EYE} />
-          <circle cx="52.5" cy="32" r="2.4" fill={EYE} />
-          <circle cx="40.8" cy="31.2" r="0.7" fill="#FFFFFF" />
-          <circle cx="53.3" cy="31.2" r="0.7" fill="#FFFFFF" />
-        </>
-      )}
+      <Eyes expression={expression} />
 
-      <ellipse cx="35.5" cy="37.5" rx="3.4" ry="2.1" fill={BLUSH} opacity="0.85" />
-      <ellipse cx="57" cy="37.5" rx="3.4" ry="2.1" fill={BLUSH} opacity="0.85" />
+      <ellipse cx="35.5" cy="37.5" rx={isHappy ? 3.9 : 3.4} ry={isHappy ? 2.5 : 2.1} fill={BLUSH} opacity={isHappy ? 1 : 0.85} />
+      <ellipse cx="57" cy="37.5" rx={isHappy ? 3.9 : 3.4} ry={isHappy ? 2.5 : 2.1} fill={BLUSH} opacity={isHappy ? 1 : 0.85} />
 
       {animal === "dog" ? (
         <ellipse cx="46.3" cy="35.6" rx="2.2" ry="1.6" fill={EYE} />
       ) : (
         <ellipse cx="46.3" cy="35.4" rx="1.3" ry="0.95" fill={NOSE} />
       )}
-      <path d="M43.8 37q1.25 1.5 2.5 0q1.25 1.5 2.5 0" stroke={LINE} strokeWidth="1.1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
 
-      {licking && <ellipse cx="49.5" cy="39.4" rx="1.4" ry="1.1" fill={NOSE} />}
+      <Mouth animal={animal} expression={expression} />
 
       {animal === "cat" && (
         <path d="M28 34.5l-7.5-1.2M28 37.5l-7.2 1.6M64.5 34.5l7.5-1.2M64.5 37.5l7.2 1.6" stroke={LINE} strokeWidth="1" strokeLinecap="round" />
@@ -124,7 +163,7 @@ function Head({ animal, palette, eyesClosed, licking }: { animal: AvatarAnimal; 
 function Tail({ animal, palette }: { animal: AvatarAnimal; palette: AvatarPalette }) {
   if (animal === "rabbit") {
     return (
-      <g data-part="tail" style={{ transformBox: "fill-box", transformOrigin: "50% 50%" }}>
+      <g data-part="tail" style={PIVOT_CENTER}>
         <circle cx="23" cy="53" r="5" fill={CREAM} stroke={LINE} strokeWidth={STROKE} />
       </g>
     );
@@ -155,7 +194,30 @@ function BodyMarkings({ animal, palette, layout, lying }: { animal: AvatarAnimal
   );
 }
 
-export function PetSprite({ ref, animal, palette, pose, className }: PetSpriteProps) {
+function Feet({ feet, fur }: { feet: Foot[]; fur: string }) {
+  return (
+    <>
+      {feet.map((foot) => (
+        <rect
+          key={foot.x}
+          data-leg={foot.group}
+          data-side={foot.side}
+          x={foot.x}
+          y="58"
+          width="7"
+          height="10"
+          rx="3.5"
+          fill={fur}
+          stroke={LINE}
+          strokeWidth={STROKE}
+          style={PIVOT_TOP}
+        />
+      ))}
+    </>
+  );
+}
+
+export function PetSprite({ ref, animal, palette, pose, expression, className }: PetSpriteProps) {
   const layout = LAYOUT[pose];
   const { fur } = palette;
   const isSeated = pose === "sit" || pose === "groom";
@@ -165,22 +227,8 @@ export function PetSprite({ ref, animal, palette, pose, className }: PetSpritePr
     <svg ref={ref} viewBox="0 0 80 72" className={className} aria-hidden="true">
       <ellipse cx="40" cy="68.5" rx="23" ry="3" fill={SHADOW} opacity="0.45" />
 
-      {pose === "stand" &&
-        STAND_FEET.map((foot) => (
-          <rect
-            key={foot.x}
-            data-leg={foot.group}
-            x={foot.x}
-            y="58"
-            width="7"
-            height="10"
-            rx="3.5"
-            fill={fur}
-            stroke={LINE}
-            strokeWidth={STROKE}
-            style={FOOT_STYLE}
-          />
-        ))}
+      {pose === "stand" && <Feet feet={STAND_FEET} fur={fur} />}
+      {pose === "bat" && <Feet feet={BAT_FEET} fur={fur} />}
 
       {pose === "stretch" && (
         <>
@@ -189,7 +237,7 @@ export function PetSprite({ ref, animal, palette, pose, className }: PetSpritePr
         </>
       )}
 
-      <g data-part="body" style={{ transformBox: "fill-box", transformOrigin: "50% 100%" }}>
+      <g data-part="body" style={PIVOT_BOTTOM}>
         <g transform={`translate(${layout.tail.x} ${layout.tail.y})`}>
           <Tail animal={animal} palette={palette} />
         </g>
@@ -225,14 +273,20 @@ export function PetSprite({ ref, animal, palette, pose, className }: PetSpritePr
         )}
 
         <g transform={`translate(${layout.head.x} ${layout.head.y})`}>
-          <g data-part="head" style={{ transformBox: "fill-box", transformOrigin: "50% 100%" }}>
-            <Head animal={animal} palette={palette} eyesClosed={pose === "sleep" || pose === "groom"} licking={pose === "groom"} />
+          <g data-part="head" style={PIVOT_BOTTOM}>
+            <Head animal={animal} palette={palette} expression={expression} />
           </g>
         </g>
 
         {pose === "groom" && (
           <g data-part="paw">
             <ellipse cx="49" cy="43" rx="3.6" ry="5.2" transform="rotate(-18 49 43)" fill={CREAM} stroke={LINE} strokeWidth={STROKE} />
+          </g>
+        )}
+
+        {pose === "bat" && (
+          <g data-part="paw" style={{ transformBox: "fill-box", transformOrigin: "30% 100%" }}>
+            <ellipse cx="57" cy="53" rx="3.6" ry="5.4" transform="rotate(28 57 53)" fill={CREAM} stroke={LINE} strokeWidth={STROKE} />
           </g>
         )}
       </g>
