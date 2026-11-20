@@ -34,6 +34,8 @@ import { PetSprite, type PetExpression, type PetPose } from "@/components/librar
 import { parseAvatar } from "@/lib/avatars";
 import { cn } from "@/lib/cn";
 
+const CALM_PACE = 1.6;
+
 type Jump = {
   start: number;
   duration: number;
@@ -112,6 +114,7 @@ export function LibraryPet({ avatar }: { avatar: string }) {
   const [expression, setExpression] = useState<PetExpression>("neutral");
   const [emote, setEmote] = useState<{ id: number; type: Emote } | null>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [isCalm, setIsCalm] = useState(false);
 
   useEffect(() => {
     const sprite = spriteRef.current;
@@ -143,8 +146,10 @@ export function LibraryPet({ avatar }: { avatar: string }) {
     }
 
     const traits = speciesFor(animal);
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const blinkSeed = Math.random() * BLINK_EVERY_S;
+
+    setIsCalm(calm);
 
     const motion: Motion = {
       x: 0,
@@ -170,6 +175,10 @@ export function LibraryPet({ avatar }: { avatar: string }) {
     let emoteTimer: ReturnType<typeof setTimeout> | undefined;
     let frame = 0;
     let last = performance.now();
+
+    function hold(min: number, max: number) {
+      return randomBetween(min, max) * (calm ? CALM_PACE : 1);
+    }
 
     function showEmote(type: Emote) {
       emoteCount += 1;
@@ -198,7 +207,9 @@ export function LibraryPet({ avatar }: { avatar: string }) {
     }
 
     function jump(height: number, duration: number, twist: number) {
-      motion.jump = { start: performance.now(), duration, height, twist };
+      if (!calm) {
+        motion.jump = { start: performance.now(), duration, height, twist };
+      }
     }
 
     function walkSomewhere() {
@@ -214,32 +225,37 @@ export function LibraryPet({ avatar }: { avatar: string }) {
     function startIdleActivity() {
       switch (weightedPick(traits.idleChoices)) {
         case "walk":
-          walkSomewhere();
+          if (calm) {
+            enterMode("sit", hold(4000, 8000));
+          } else {
+            walkSomewhere();
+          }
+
           return;
         case "sit":
-          enterMode("sit", randomBetween(4000, 8000));
+          enterMode("sit", hold(4000, 8000));
           return;
         case "groom":
-          enterMode("groom", randomBetween(2500, 4000));
+          enterMode("groom", hold(2500, 4000));
           return;
         case "look":
-          enterMode("look", randomBetween(2000, 3200));
+          enterMode("look", hold(2000, 3200));
           return;
         case "sniff":
-          enterMode("sniff", randomBetween(1800, 3000));
+          enterMode("sniff", hold(1800, 3000));
           return;
         case "sleep":
           enterMode("yawn", 1300);
           return;
         default:
-          enterMode("idle", randomBetween(800, 1600));
+          enterMode("idle", hold(800, 1600));
       }
     }
 
     function decide() {
       switch (motion.mode) {
         case "yawn":
-          enterMode("sleep", randomBetween(10000, 18000));
+          enterMode("sleep", hold(10000, 18000));
           return;
         case "sleep":
           enterMode("stretch", 1300);
@@ -247,31 +263,31 @@ export function LibraryPet({ avatar }: { avatar: string }) {
         case "stretch":
         case "look":
         case "sniff":
-          enterMode("idle", randomBetween(600, 1300));
+          enterMode("idle", hold(600, 1300));
           return;
         case "groom":
-          enterMode("sit", randomBetween(1500, 3000));
+          enterMode("sit", hold(1500, 3000));
           return;
         case "petted":
         case "joy":
-          enterMode("sit", randomBetween(2500, 4500));
+          enterMode("sit", hold(2500, 4500));
           return;
         case "play":
           if (Math.random() < 0.6) {
             toy.velocity = motion.facing * randomBetween(90, 170);
           }
 
-          enterMode("idle", randomBetween(900, 1600));
+          enterMode("idle", hold(900, 1600));
           return;
         case "sit": {
           const roll = Math.random();
 
           if (roll < 0.3 && traits.grooms) {
-            enterMode("groom", randomBetween(2500, 4000));
+            enterMode("groom", hold(2500, 4000));
           } else if (roll < 0.55) {
             enterMode("yawn", 1300);
           } else {
-            enterMode("idle", randomBetween(600, 1300));
+            enterMode("idle", hold(600, 1300));
           }
 
           return;
@@ -282,6 +298,11 @@ export function LibraryPet({ avatar }: { avatar: string }) {
     }
 
     function celebrate() {
+      if (calm) {
+        enterMode("joy", hold(3500, 4500));
+        return;
+      }
+
       if (animal === "dog") {
         moveTo(motion.x < motion.width / 2 ? motion.width : 0, traits.runSpeed * 1.25, "zoom");
         return;
@@ -294,7 +315,7 @@ export function LibraryPet({ avatar }: { avatar: string }) {
         return;
       }
 
-      enterMode("joy", randomBetween(3500, 4500));
+      enterMode("joy", hold(3500, 4500));
     }
 
     function pet() {
@@ -304,18 +325,13 @@ export function LibraryPet({ avatar }: { avatar: string }) {
         motion.sleepPets += 1;
         motion.twitchUntil = now + 450;
 
-        if (motion.sleepPets >= PETS_TO_WAKE && !reducedMotion) {
+        if (motion.sleepPets >= PETS_TO_WAKE) {
           showEmote("exclaim");
           enterMode("stretch", 1100);
         } else {
           showEmote("heart");
         }
 
-        return;
-      }
-
-      if (reducedMotion) {
-        showEmote("heart");
         return;
       }
 
@@ -330,7 +346,7 @@ export function LibraryPet({ avatar }: { avatar: string }) {
 
       showEmote(animal === "cat" ? "note" : "heart");
       motion.target = motion.x;
-      enterMode("petted", randomBetween(1800, 2400));
+      enterMode("petted", hold(1800, 2400));
 
       if (animal === "rabbit") {
         jump(15, 520, Math.random() < 0.5 ? 12 : -12);
@@ -340,7 +356,7 @@ export function LibraryPet({ avatar }: { avatar: string }) {
     }
 
     function toss() {
-      if (reducedMotion) {
+      if (calm) {
         return;
       }
 
@@ -363,15 +379,15 @@ export function LibraryPet({ avatar }: { avatar: string }) {
     function arrive() {
       switch (motion.mode) {
         case "walk":
-          enterMode("idle", randomBetween(1000, 2800));
+          enterMode("idle", hold(1000, 2800));
           return;
         case "zoom":
-          enterMode("petted", randomBetween(1800, 2600));
+          enterMode("petted", hold(1800, 2600));
           return;
         case "chase":
           if (Math.abs(toy.velocity) < 40) {
             motion.facing = toy.x + TOY_SIZE / 2 > motion.x + PET_WIDTH / 2 ? 1 : -1;
-            enterMode("play", randomBetween(2200, 3200));
+            enterMode("play", hold(2200, 3200));
           }
       }
     }
@@ -424,7 +440,7 @@ export function LibraryPet({ avatar }: { avatar: string }) {
 
     function faceAttention(now: number) {
       if (motion.mode === "look") {
-        motion.facing = Math.floor(now / 1100) % 2 === 0 ? 1 : -1;
+        motion.facing = Math.floor(now / (calm ? 2200 : 1100)) % 2 === 0 ? 1 : -1;
         return;
       }
 
@@ -519,7 +535,7 @@ export function LibraryPet({ avatar }: { avatar: string }) {
       setTransform(toyRef.current, `translate3d(${toy.x}px, 0, 0)`);
       setTransform(toySpinRef.current, `rotate(${toy.spin}rad)`);
 
-      if (reducedMotion) {
+      if (calm) {
         return;
       }
 
@@ -567,20 +583,17 @@ export function LibraryPet({ avatar }: { avatar: string }) {
           motion.queuedJump = null;
         }
 
-        if (!reducedMotion) {
-          if (motion.mode === "chase") {
-            motion.target = clampX(chaseTarget(), motion.width);
-          }
-
-          if (MOVING_MODES.includes(motion.mode)) {
-            move(elapsed);
-          } else if (now >= motion.until) {
-            decide();
-          }
-
-          faceAttention(now);
+        if (motion.mode === "chase") {
+          motion.target = clampX(chaseTarget(), motion.width);
         }
 
+        if (MOVING_MODES.includes(motion.mode)) {
+          move(elapsed);
+        } else if (now >= motion.until) {
+          decide();
+        }
+
+        faceAttention(now);
         paint(now);
       }
 
@@ -608,7 +621,7 @@ export function LibraryPet({ avatar }: { avatar: string }) {
         motion.target = motion.x;
         motion.facing = Math.random() < 0.5 ? 1 : -1;
         toy.x = clampX(randomBetween(0.1, 0.9) * motion.width, motion.width, TOY_SIZE);
-        enterMode(reducedMotion ? "sit" : "idle", randomBetween(800, 1600));
+        enterMode(calm ? "sit" : "idle", hold(800, 1600));
         setIsVisible(true);
       } else {
         motion.x = clampX(motion.x, motion.width);
@@ -637,22 +650,24 @@ export function LibraryPet({ avatar }: { avatar: string }) {
 
   return (
     <div ref={layerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-28 select-none">
-      <div
-        ref={toyRef}
-        className={cn("absolute bottom-[11px] left-0 transition-opacity duration-500", isVisible ? "opacity-100" : "opacity-0")}
-        style={{ width: TOY_SIZE, height: TOY_SIZE }}
-      >
-        <button
-          type="button"
-          onClick={() => controllerRef.current?.toss()}
-          aria-label={`Toss the ${species.toyName} for your ${petName}`}
-          className="pointer-events-auto block size-full cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage-600"
+      {!isCalm && (
+        <div
+          ref={toyRef}
+          className={cn("absolute bottom-[11px] left-0 transition-opacity duration-500", isVisible ? "opacity-100" : "opacity-0")}
+          style={{ width: TOY_SIZE, height: TOY_SIZE }}
         >
-          <span ref={toySpinRef} className="block size-full">
-            <PetToy animal={animal} />
-          </span>
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => controllerRef.current?.toss()}
+            aria-label={`Toss the ${species.toyName} for your ${petName}`}
+            className="pointer-events-auto block size-full cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage-600"
+          >
+            <span ref={toySpinRef} className="block size-full">
+              <PetToy animal={animal} />
+            </span>
+          </button>
+        </div>
+      )}
 
       <div
         ref={petRef}

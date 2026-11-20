@@ -8,11 +8,13 @@ import { LibraryNameDialog } from "@/components/library/LibraryNameDialog";
 import { LibraryRoom } from "@/components/library/LibraryRoom";
 import { LibrarySign } from "@/components/library/LibrarySign";
 import { ManageBooksDialog } from "@/components/library/ManageBooksDialog";
+import { WelcomeTour } from "@/components/onboarding/WelcomeTour";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { DEFAULT_AVATAR } from "@/lib/avatars";
 import { defaultLibraryName, displayLibraryName } from "@/lib/library";
 import { listBookcases } from "@/server/bookcases";
 import { getLibraryName } from "@/server/library";
+import { hasFinishedOnboarding } from "@/server/onboarding";
 import { requireSession } from "@/server/session";
 
 export const metadata: Metadata = {
@@ -32,8 +34,14 @@ type LibraryPageProps = {
 
 export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   const { user } = await requireSession();
-  const [bookcases, savedName, params] = await Promise.all([listBookcases(user.id), getLibraryName(user.id), searchParams]);
+  const [bookcases, savedName, onboarded, params] = await Promise.all([
+    listBookcases(user.id),
+    getLibraryName(user.id),
+    hasFinishedOnboarding(user.id),
+    searchParams,
+  ]);
 
+  const avatar = user.avatar ?? DEFAULT_AVATAR;
   const libraryName = displayLibraryName(savedName, user.name);
   const findBookcase = (id?: string) => (id ? bookcases.find((bookcase) => bookcase.id === id) : undefined);
 
@@ -43,6 +51,7 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
   const isBookcaseDialogOpen = params.new === "bookcase" || Boolean(editingBookcase);
   const isAddingBook = params.new === "book";
   const bookcaseOptions = bookcases.map(({ id, name }) => ({ id, name }));
+  const showTour = !onboarded && Object.values(params).every((value) => value === undefined);
 
   return (
     <>
@@ -58,7 +67,7 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
           <EmptyLibrary name={user.name} />
         </>
       ) : (
-        <LibraryRoom bookcases={bookcases} libraryName={libraryName} avatar={user.avatar ?? DEFAULT_AVATAR} />
+        <LibraryRoom bookcases={bookcases} libraryName={libraryName} avatar={avatar} />
       )}
 
       <BookcaseDialog
@@ -87,6 +96,10 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
       )}
 
       {params.rename === "library" && <LibraryNameDialog savedName={savedName} defaultName={defaultLibraryName(user.name)} />}
+
+      {showTour && (
+        <WelcomeTour name={user.name} libraryName={libraryName} avatar={avatar} hasBookcases={bookcases.length > 0} />
+      )}
     </>
   );
 }

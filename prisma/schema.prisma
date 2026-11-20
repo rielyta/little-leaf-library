@@ -30,6 +30,7 @@ model User {
   displayUsername String?
   avatar          String      @default("cat-0")
   libraryName     String?
+  onboardedAt     DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
