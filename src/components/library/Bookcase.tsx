@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BookcaseMenu } from "@/components/library/BookcaseMenu";
 import { BookSpine } from "@/components/library/BookSpine";
-import { POT_COLORS, SHELVES_PER_BOOKCASE, WOODS, type BookcaseSummary } from "@/lib/bookcases";
+import { POT_COLORS, WOODS, type BookcaseSummary } from "@/lib/bookcases";
 import { arrangeOnShelves } from "@/lib/books";
 
 type BookcaseProps = {
@@ -34,7 +34,7 @@ function ShelfPlant({ pot }: { pot: string }) {
 export function Bookcase({ bookcase, index }: BookcaseProps) {
   const wood = WOODS[bookcase.wood];
   const pot = POT_COLORS[index % POT_COLORS.length];
-  const shelves = arrangeOnShelves(bookcase.books, SHELVES_PER_BOOKCASE);
+  const shelves = arrangeOnShelves(bookcase.books, bookcase.shelves);
   const isEmpty = bookcase.books.length === 0;
 
   return (
@@ -62,7 +62,7 @@ export function Bookcase({ bookcase, index }: BookcaseProps) {
         ))}
 
         {isEmpty && (
-          <div className="absolute inset-x-6 top-35 flex flex-col items-center gap-2 rounded-[1.125rem] border-[1.5px] border-ink bg-paper p-4.5 text-center">
+          <div className="absolute inset-x-6 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2 rounded-[1.125rem] border-[1.5px] border-ink bg-paper p-4.5 text-center">
             <strong className="font-display text-[17px] font-semibold text-ink-strong">This bookcase is still quiet</strong>
             <span className="text-[13px] leading-relaxed text-ink-soft">Shelve your first PDF book here.</span>
             <Link

@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { fileTooLargeMessage, hasRoomFor, MAX_BOOK_FILE_BYTES, quotaExceededMessage } from "@/lib/storage-quota";
 import { uploadRequestSchema } from "@/lib/validation/upload";
 import { checkRateLimits, RATE_LIMITS, waitLabel } from "@/server/rate-limit";
-import { getUploadUrl, pendingUploadKey } from "@/server/storage";
+import { deleteStoredFolder, getUploadUrl, pendingFolder, pendingUploadKey } from "@/server/storage";
 import { getStorageUsage } from "@/server/storage-quota";
 
 function errorResponse(status: number, error: string, headers?: HeadersInit) {
@@ -44,6 +44,8 @@ export async function POST(request: Request) {
       { "Retry-After": String(limit.retryAfterSeconds) },
     );
   }
+
+  await deleteStoredFolder(pendingFolder(session.user.id));
 
   const uploadId = randomUUID();
   const remoteUrl = await getUploadUrl(pendingUploadKey(session.user.id, uploadId));

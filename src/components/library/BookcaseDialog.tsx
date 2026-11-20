@@ -7,7 +7,16 @@ import { Button } from "@/components/ui/Button";
 import { FormAlert } from "@/components/ui/FormAlert";
 import { Modal, ModalCancelButton } from "@/components/ui/Modal";
 import { TextField } from "@/components/ui/TextField";
-import { BOOKCASE_NAME_MAX_LENGTH, WOOD_KEYS, WOODS, type WoodKey } from "@/lib/bookcases";
+import {
+  BOOKCASE_NAME_MAX_LENGTH,
+  DEFAULT_SHELVES,
+  isShelfCount,
+  SHELF_OPTIONS,
+  WOOD_KEYS,
+  WOODS,
+  type ShelfCount,
+  type WoodKey,
+} from "@/lib/bookcases";
 import { cn } from "@/lib/cn";
 
 const initialState: BookcaseFormState = {};
@@ -16,6 +25,7 @@ type EditableBookcase = {
   id: string;
   name: string;
   wood: WoodKey;
+  shelves: number;
 };
 
 type BookcaseDialogProps = {
@@ -23,7 +33,7 @@ type BookcaseDialogProps = {
   bookcase?: EditableBookcase;
 };
 
-function BookcasePreview({ name, wood }: { name: string; wood: WoodKey }) {
+function BookcasePreview({ name, wood, shelves }: { name: string; wood: WoodKey; shelves: ShelfCount }) {
   const colors = WOODS[wood];
 
   return (
@@ -36,7 +46,7 @@ function BookcasePreview({ name, wood }: { name: string; wood: WoodKey }) {
           </span>
         </div>
         <div className="flex flex-col gap-2 border-[1.5px] border-t-0 border-ink p-2" style={{ backgroundColor: colors.dark }}>
-          {[0, 1, 2].map((shelf) => (
+          {Array.from({ length: shelves }, (_, shelf) => (
             <div key={shelf} className="h-16.5 rounded-[3px] border-[1.5px] border-b-[6px] border-ink bg-wood-200" style={{ borderBottomColor: colors.light }} />
           ))}
         </div>
@@ -49,14 +59,26 @@ function BookcasePreview({ name, wood }: { name: string; wood: WoodKey }) {
   );
 }
 
+function ShelfIcon({ count }: { count: ShelfCount }) {
+  return (
+    <span aria-hidden="true" className="flex w-7 flex-none flex-col gap-0.5 rounded-[5px] border-[1.5px] border-ink bg-wood-300 p-0.5">
+      {Array.from({ length: count }, (_, shelf) => (
+        <span key={shelf} className="h-1.5 rounded-[2px] bg-wood-100" />
+      ))}
+    </span>
+  );
+}
+
 export function BookcaseDialog({ open, bookcase }: BookcaseDialogProps) {
   const router = useRouter();
   const isEditing = Boolean(bookcase);
   const action = bookcase ? updateBookcase.bind(null, bookcase.id) : createBookcase;
+  const savedShelves = bookcase && isShelfCount(bookcase.shelves) ? bookcase.shelves : DEFAULT_SHELVES;
 
   const [state, formAction, pending] = useActionState(action, initialState);
   const [name, setName] = useState(bookcase?.name ?? "");
   const [wood, setWood] = useState<WoodKey>(bookcase?.wood ?? "honey");
+  const [shelves, setShelves] = useState<ShelfCount>(savedShelves);
 
   return (
     <Modal
@@ -98,9 +120,39 @@ export function BookcaseDialog({ open, bookcase }: BookcaseDialogProps) {
               ))}
               {state.errors?.wood && <p className="text-[13px] font-semibold text-danger">{state.errors.wood}</p>}
             </fieldset>
+
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 text-sm font-bold">Shelves</legend>
+              <div className="grid grid-cols-2 gap-2">
+                {SHELF_OPTIONS.map((count) => (
+                  <label
+                    key={count}
+                    className={cn(
+                      "flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl border-[1.5px] px-3.5 text-sm font-bold transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-sage-600",
+                      shelves === count ? "border-ink bg-blush-50" : "border-line bg-white hover:bg-paper",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="shelves"
+                      value={count}
+                      checked={shelves === count}
+                      onChange={() => setShelves(count)}
+                      className="sr-only"
+                    />
+                    <ShelfIcon count={count} />
+                    {count} shelves
+                  </label>
+                ))}
+              </div>
+              <span className="text-[13px] leading-relaxed text-ink-soft">
+                When the shelves fill up, the bookcase grows an extra shelf on its own.
+              </span>
+              {state.errors?.shelves && <p className="text-[13px] font-semibold text-danger">{state.errors.shelves}</p>}
+            </fieldset>
           </div>
 
-          <BookcasePreview name={name} wood={wood} />
+          <BookcasePreview name={name} wood={wood} shelves={shelves} />
         </div>
 
         <div className="flex justify-end gap-3">

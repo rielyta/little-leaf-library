@@ -77,14 +77,17 @@ function requireEnv(name: string) {
   return value;
 }
 
-function createR2Driver(): StorageDriver {
-  const bucket = requireEnv("R2_BUCKET");
+function createS3Driver(): StorageDriver {
+  const bucket = requireEnv("S3_BUCKET");
   const client = new S3Client({
-    region: "auto",
-    endpoint: `https://${requireEnv("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
+    endpoint: requireEnv("S3_ENDPOINT"),
+    region: requireEnv("S3_REGION"),
+    forcePathStyle: true,
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
     credentials: {
-      accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
-      secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
+      accessKeyId: requireEnv("S3_ACCESS_KEY_ID"),
+      secretAccessKey: requireEnv("S3_SECRET_ACCESS_KEY"),
     },
   });
 
@@ -157,12 +160,12 @@ function createR2Driver(): StorageDriver {
 let driver: StorageDriver | null = null;
 
 function storage() {
-  driver ??= isRemoteStorage() ? createR2Driver() : localDriver;
+  driver ??= isRemoteStorage() ? createS3Driver() : localDriver;
   return driver;
 }
 
 export function isRemoteStorage() {
-  return process.env.STORAGE_DRIVER === "r2";
+  return process.env.STORAGE_DRIVER === "s3";
 }
 
 export function bookFileKey(userId: string, bookId: string) {
@@ -170,11 +173,15 @@ export function bookFileKey(userId: string, bookId: string) {
 }
 
 export function pendingUploadKey(userId: string, uploadId: string) {
-  return `pending/${userId}/${uploadId}.pdf`;
+  return `${pendingFolder(userId)}${uploadId}.pdf`;
+}
+
+export function pendingFolder(userId: string) {
+  return `pending/${userId}/`;
 }
 
 export function userStoragePrefixes(userId: string) {
-  return [`books/${userId}/`, `pending/${userId}/`];
+  return [`books/${userId}/`, pendingFolder(userId)];
 }
 
 export async function saveStoredFile(key: string, bytes: Uint8Array) {

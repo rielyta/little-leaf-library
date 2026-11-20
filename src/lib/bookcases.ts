@@ -14,11 +14,20 @@ export const POT_COLORS = ["#F2B8C6", "#A9CCD8", "#BFD8C2", "#F3E3C3"];
 
 export const BOOKCASE_NAME_MAX_LENGTH = 30;
 
-export const SHELVES_PER_BOOKCASE = 3;
+export const SHELF_OPTIONS = [2, 3] as const;
+
+export type ShelfCount = (typeof SHELF_OPTIONS)[number];
+
+export const DEFAULT_SHELVES: ShelfCount = 3;
+
+export function isShelfCount(value: number): value is ShelfCount {
+  return SHELF_OPTIONS.some((option) => option === value);
+}
 
 export type BookcaseSummary = {
   id: string;
   name: string;
   wood: WoodKey;
+  shelves: number;
   books: BookOnShelf[];
 };

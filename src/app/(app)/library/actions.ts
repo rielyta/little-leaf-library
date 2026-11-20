@@ -37,6 +37,7 @@ function parseBookcaseForm(formData: FormData) {
   return bookcaseSchema.safeParse({
     name: formData.get("name"),
     wood: formData.get("wood"),
+    shelves: formData.get("shelves"),
   });
 }
 

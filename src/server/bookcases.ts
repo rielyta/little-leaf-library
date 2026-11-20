@@ -5,6 +5,7 @@ import { db } from "@/server/db";
 type BookcaseData = {
   name: string;
   wood: WoodKey;
+  shelves: number;
 };
 
 export async function listBookcases(userId: string): Promise<BookcaseSummary[]> {
@@ -15,6 +16,7 @@ export async function listBookcases(userId: string): Promise<BookcaseSummary[]> 
       id: true,
       name: true,
       wood: true,
+      shelves: true,
       books: {
         orderBy: { position: "asc" },
         select: {

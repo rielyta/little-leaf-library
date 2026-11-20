@@ -49,6 +49,7 @@ model Bookcase {
   id        String   @id @default(cuid())
   name      String
   wood      Wood     @default(honey)
+  shelves   Int      @default(3)
   position  Int
   userId    String
   createdAt DateTime @default(now())

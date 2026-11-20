@@ -73,7 +73,14 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
       <BookcaseDialog
         key={`bookcase-${isBookcaseDialogOpen}-${editingBookcase?.id ?? "new"}`}
         open={isBookcaseDialogOpen}
-        bookcase={editingBookcase && { id: editingBookcase.id, name: editingBookcase.name, wood: editingBookcase.wood }}
+        bookcase={
+          editingBookcase && {
+            id: editingBookcase.id,
+            name: editingBookcase.name,
+            wood: editingBookcase.wood,
+            shelves: editingBookcase.shelves,
+          }
+        }
       />
 
       <AddBookDialog
