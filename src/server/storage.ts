@@ -1,7 +1,14 @@
 import "server-only";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const STORAGE_ROOT = path.join(process.cwd(), "storage");
@@ -14,6 +21,7 @@ type StorageDriver = {
   save: (key: string, bytes: Uint8Array) => Promise<void>;
   read: (key: string) => Promise<StoredBytes>;
   remove: (key: string) => Promise<void>;
+  removeFolder: (prefix: string) => Promise<void>;
   signedUrl: (key: string, fileName: string) => Promise<string | null>;
   uploadUrl: (key: string) => Promise<string | null>;
 };
@@ -47,6 +55,9 @@ const localDriver: StorageDriver = {
   },
   async remove(key) {
     await unlink(resolveLocalKey(key)).catch(() => undefined);
+  },
+  async removeFolder(prefix) {
+    await rm(resolveLocalKey(prefix), { recursive: true, force: true });
   },
   async signedUrl() {
     return null;
@@ -100,6 +111,22 @@ function createR2Driver(): StorageDriver {
     async remove(key) {
       await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => undefined);
     },
+    async removeFolder(prefix) {
+      let continuationToken: string | undefined;
+
+      do {
+        const page = await client.send(
+          new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: continuationToken }),
+        );
+        const objects = (page.Contents ?? []).flatMap((object) => (object.Key ? [{ Key: object.Key }] : []));
+
+        if (objects.length > 0) {
+          await client.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: objects, Quiet: true } }));
+        }
+
+        continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+      } while (continuationToken);
+    },
     async signedUrl(key, fileName) {
       return getSignedUrl(
         client,
@@ -146,6 +173,10 @@ export function pendingUploadKey(userId: string, uploadId: string) {
   return `pending/${userId}/${uploadId}.pdf`;
 }
 
+export function userStoragePrefixes(userId: string) {
+  return [`books/${userId}/`, `pending/${userId}/`];
+}
+
 export async function saveStoredFile(key: string, bytes: Uint8Array) {
   await storage().save(key, bytes);
 }
@@ -156,6 +187,10 @@ export async function readStoredFile(key: string) {
 
 export async function deleteStoredFile(key: string) {
   await storage().remove(key);
+}
+
+export async function deleteStoredFolder(prefix: string) {
+  await storage().removeFolder(prefix);
 }
 
 export async function getStoredFileUrl(key: string, fileName: string) {

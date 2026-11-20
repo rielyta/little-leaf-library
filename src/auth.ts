@@ -5,8 +5,10 @@ import { nextCookies } from "better-auth/next-js";
 import { username } from "better-auth/plugins";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/validation/auth";
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@/lib/validation/username";
+import { deleteUserFiles } from "@/server/account";
 import { db } from "@/server/db";
 import { sendEmail } from "@/server/email";
+import { deleteAccountEmail } from "@/server/emails/delete-account";
 import { resetPasswordEmail } from "@/server/emails/reset-password";
 import { verifyEmailEmail } from "@/server/emails/verify-email";
 import { generateUniqueUsername } from "@/server/username";
@@ -67,6 +69,7 @@ export const auth = betterAuth({
       "/sign-up/email": { window: HOUR, max: 5 },
       "/request-password-reset": { window: 15 * MINUTE, max: 3 },
       "/send-verification-email": { window: 15 * MINUTE, max: 3 },
+      "/delete-user": { window: 15 * MINUTE, max: 3 },
       "/get-session": false,
     },
   },
@@ -90,6 +93,15 @@ export const auth = betterAuth({
         required: false,
         defaultValue: "cat-0",
         input: false,
+      },
+    },
+    deleteUser: {
+      enabled: true,
+      sendDeleteAccountVerification: async ({ user, url }) => {
+        deliver(user.email, deleteAccountEmail({ name: user.name, url }));
+      },
+      afterDelete: async (user) => {
+        await deleteUserFiles(user.id);
       },
     },
   },

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppHeader } from "@/components/app/AppHeader";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { AvatarPicker } from "@/components/profile/AvatarPicker";
+import { DeleteAccountSection } from "@/components/profile/DeleteAccountSection";
 import { ProfileInfo } from "@/components/profile/ProfileInfo";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { StorageMeter } from "@/components/ui/StorageMeter";
@@ -86,6 +87,8 @@ export default async function ProfilePage() {
         <div className="flex justify-end">
           <SignOutButton />
         </div>
+
+        <DeleteAccountSection email={user.email} />
       </main>
     </>
   );
