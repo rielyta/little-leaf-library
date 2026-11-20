@@ -1,16 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { FormAlert } from "@/components/ui/FormAlert";
 import { Modal, ModalCancelButton } from "@/components/ui/Modal";
+import { StorageMeter } from "@/components/ui/StorageMeter";
 import { TextField } from "@/components/ui/TextField";
 import {
   BOOK_AUTHOR_MAX_LENGTH,
   BOOK_TITLE_MAX_LENGTH,
-  MAX_PDF_BYTES,
-  MAX_PDF_LABEL,
   SPINE_COLOR_NAMES,
   SPINE_COLOR_VALUES,
   spineWidth,
@@ -19,6 +18,14 @@ import {
 } from "@/lib/books";
 import { cn } from "@/lib/cn";
 import { readPdfInfo } from "@/lib/pdf-info";
+import {
+  fileTooLargeMessage,
+  formatBytes,
+  hasRoomFor,
+  MAX_BOOK_FILE_BYTES,
+  quotaExceededMessage,
+  type StorageUsage,
+} from "@/lib/storage-quota";
 import { bookSchema, type BookValues } from "@/lib/validation/book";
 import { toFieldErrors, type FieldErrors } from "@/lib/validation/errors";
 
@@ -38,6 +45,25 @@ type SelectedFile = {
   pageCount: number;
 };
 
+type ErrorBody = {
+  error?: string;
+  fieldErrors?: FieldErrors<BookValues>;
+};
+
+type UploadTicket = {
+  uploadId: string;
+  url: string;
+};
+
+class UploadError extends Error {
+  constructor(
+    message: string,
+    readonly fieldErrors: FieldErrors<BookValues> = {},
+  ) {
+    super(message);
+  }
+}
+
 const NEIGHBOR_SPINES = [
   { width: 24, height: 104, color: "#CFE3EA" },
   { width: 30, height: 96, color: "#E9C6D9" },
@@ -45,8 +71,44 @@ const NEIGHBOR_SPINES = [
   { width: 34, height: 100, color: "#F3E3C3" },
 ];
 
-function formatFileSize(bytes: number) {
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+const GENERIC_UPLOAD_ERROR = "We could not upload this book. Please try again.";
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const result = (await response.json().catch(() => null)) as ErrorBody | null;
+    throw new UploadError(result?.error ?? GENERIC_UPLOAD_ERROR, result?.fieldErrors);
+  }
+
+  return (await response.json()) as T;
+}
+
+function putFile(url: string, file: File, onProgress: (fraction: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+
+    request.open("PUT", url);
+    request.setRequestHeader("Content-Type", "application/pdf");
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress(event.loaded / event.total);
+      }
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve();
+      } else {
+        reject(new UploadError(GENERIC_UPLOAD_ERROR));
+      }
+    };
+    request.onerror = () => reject(new UploadError("Your connection dropped while uploading. Please try again."));
+    request.send(file);
+  });
 }
 
 export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDialogProps) {
@@ -58,8 +120,31 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
   const [spineColor, setSpineColor] = useState<SpineColor>(SPINE_COLOR_VALUES[0]);
   const [errors, setErrors] = useState<FieldErrors<BookValues>>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "reading" | "uploading">("idle");
+  const [status, setStatus] = useState<"idle" | "reading" | "uploading" | "shelving">("idle");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [usage, setUsage] = useState<StorageUsage | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    let ignore = false;
+
+    fetch("/api/storage")
+      .then((response) => (response.ok ? (response.json() as Promise<StorageUsage>) : null))
+      .then((result) => {
+        if (!ignore && result) {
+          setUsage(result);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      ignore = true;
+    };
+  }, [open]);
 
   async function pickFile(file: File | undefined) {
     if (!file) {
@@ -73,8 +158,13 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
       return;
     }
 
-    if (file.size > MAX_PDF_BYTES) {
-      setFormError(`This PDF is ${formatFileSize(file.size)}. Files can be up to ${MAX_PDF_LABEL}.`);
+    if (file.size > MAX_BOOK_FILE_BYTES) {
+      setFormError(fileTooLargeMessage(file.size));
+      return;
+    }
+
+    if (usage && !hasRoomFor(usage, file.size)) {
+      setFormError(quotaExceededMessage(file.size, usage));
       return;
     }
 
@@ -120,18 +210,19 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
 
     setErrors({});
     setFormError(null);
+    setUploadProgress(0);
     setStatus("uploading");
 
-    const body = new FormData();
-    body.append("file", selected.file);
-    Object.entries(parsed.data).forEach(([key, value]) => body.append(key, value));
+    try {
+      const ticket = await postJson<UploadTicket>("/api/books/uploads", { size: selected.file.size });
+      await putFile(ticket.url, selected.file, setUploadProgress);
 
-    const response = await fetch("/api/books", { method: "POST", body });
-
-    if (!response.ok) {
-      const result = (await response.json().catch(() => null)) as { error?: string; fieldErrors?: FieldErrors<BookValues> } | null;
-      setErrors(result?.fieldErrors ?? {});
-      setFormError(result?.error ?? "We could not upload this book. Please try again.");
+      setStatus("shelving");
+      await postJson("/api/books", { ...parsed.data, uploadId: ticket.uploadId });
+    } catch (error) {
+      const uploadError = error instanceof UploadError ? error : new UploadError(GENERIC_UPLOAD_ERROR);
+      setErrors(uploadError.fieldErrors);
+      setFormError(uploadError.message);
       setStatus("idle");
       return;
     }
@@ -141,6 +232,14 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
   }
 
   const isBusy = status !== "idle";
+
+  let submitLabel = "Put on shelf";
+
+  if (status === "uploading") {
+    submitLabel = `Uploading ${Math.round(uploadProgress * 100)}%`;
+  } else if (status === "shelving") {
+    submitLabel = "Shelving...";
+  }
 
   return (
     <Modal
@@ -187,7 +286,7 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
                     <div className="flex min-w-0 flex-col gap-0.5">
                       <strong className="truncate text-[15px]">{selected.file.name}</strong>
                       <span className="text-[13px] text-ink-soft">
-                        {selected.pageCount} pages, {formatFileSize(selected.file.size)}
+                        {selected.pageCount} pages, {formatBytes(selected.file.size)}
                       </span>
                       <span className="text-[13px] font-extrabold text-sage-700">Ready to shelve. Click to choose another.</span>
                     </div>
@@ -198,10 +297,12 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
                       PDF
                     </span>
                     <strong className="text-[15px]">{status === "reading" ? "Reading your PDF..." : "Drop a PDF here or click to choose"}</strong>
-                    <span className="text-[13px] text-mist-700">Up to {MAX_PDF_LABEL}</span>
+                    <span className="text-[13px] text-mist-700">Up to {formatBytes(MAX_BOOK_FILE_BYTES)} per book</span>
                   </div>
                 )}
               </label>
+
+              {usage && <StorageMeter usage={usage} />}
 
               <div className="flex flex-col gap-2.5">
                 <span className="text-sm font-extrabold">Preview on the shelf</span>
@@ -310,7 +411,7 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
           <div className="flex justify-end gap-3 border-t-[1.5px] border-[#F0E6DA] pt-4.5">
             <ModalCancelButton disabled={isBusy} />
             <Button type="submit" disabled={isBusy || !selected}>
-              {status === "uploading" ? "Shelving..." : "Put on shelf"}
+              {submitLabel}
             </Button>
           </div>
         </form>

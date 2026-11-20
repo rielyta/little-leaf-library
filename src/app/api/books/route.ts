@@ -1,22 +1,17 @@
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
-import { hasPdfSignature, MAX_PDF_BYTES, MAX_PDF_LABEL } from "@/lib/books";
+import { hasPdfSignature } from "@/lib/books";
 import { readPdfInfo } from "@/lib/pdf-info";
-import { bookSchema } from "@/lib/validation/book";
+import { fileTooLargeMessage, hasRoomFor, MAX_BOOK_FILE_BYTES, quotaExceededMessage } from "@/lib/storage-quota";
 import { toFieldErrors } from "@/lib/validation/errors";
+import { finishUploadSchema } from "@/lib/validation/upload";
 import { findOwnedBookcase } from "@/server/bookcases";
 import { createBookForUser } from "@/server/books";
-import { checkRateLimits, RATE_LIMITS, waitLabel } from "@/server/rate-limit";
-import { bookFileKey, deleteStoredFile, saveStoredFile } from "@/server/storage";
+import { bookFileKey, deleteStoredFile, pendingUploadKey, readStoredFile, saveStoredFile } from "@/server/storage";
+import { getStorageUsage } from "@/server/storage-quota";
 
-function errorResponse(status: number, error: string, fieldErrors?: Record<string, string | undefined>, headers?: HeadersInit) {
-  return Response.json({ error, fieldErrors }, { status, headers });
-}
-
-function textField(formData: FormData, name: string) {
-  const value = formData.get(name);
-  return typeof value === "string" ? value : "";
+function errorResponse(status: number, error: string, fieldErrors?: Record<string, string | undefined>) {
+  return Response.json({ error, fieldErrors }, { status });
 }
 
 export async function POST(request: Request) {
@@ -26,82 +21,77 @@ export async function POST(request: Request) {
     return errorResponse(401, "Please log in again.");
   }
 
-  const limit = await checkRateLimits(session.user.id, [RATE_LIMITS.uploadPerHour]);
-
-  if (!limit.allowed) {
-    return errorResponse(
-      429,
-      `You have added a lot of books in a short time. Please try again in ${waitLabel(limit.retryAfterSeconds)}.`,
-      undefined,
-      { "Retry-After": String(limit.retryAfterSeconds) },
-    );
-  }
-
-  const formData = await request.formData();
-  const file = formData.get("file");
-
-  if (!(file instanceof File) || file.size === 0) {
-    return errorResponse(400, "Choose a PDF file to upload.");
-  }
-
-  if (file.size > MAX_PDF_BYTES) {
-    return errorResponse(413, `PDF files can be up to ${MAX_PDF_LABEL}.`);
-  }
-
-  const parsed = bookSchema.safeParse({
-    title: textField(formData, "title"),
-    author: textField(formData, "author"),
-    bookcaseId: textField(formData, "bookcaseId"),
-    spineColor: textField(formData, "spineColor"),
-  });
+  const parsed = finishUploadSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
     return errorResponse(400, "Please check the highlighted fields.", toFieldErrors(parsed.error));
   }
 
-  const bookcase = await findOwnedBookcase(session.user.id, parsed.data.bookcaseId);
-
-  if (!bookcase) {
-    return errorResponse(404, "That bookcase could not be found.");
-  }
-
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  if (!hasPdfSignature(bytes)) {
-    return errorResponse(400, "This file is not a PDF.");
-  }
-
-  let pageCount: number;
+  const userId = session.user.id;
+  const { uploadId, title, author, bookcaseId, spineColor } = parsed.data;
+  const pendingKey = pendingUploadKey(userId, uploadId);
 
   try {
-    ({ pageCount } = await readPdfInfo(bytes));
-  } catch {
-    return errorResponse(400, "We could not read this PDF. It may be damaged or protected with a password.");
-  }
+    const bookcase = await findOwnedBookcase(userId, bookcaseId);
 
-  const id = randomUUID();
-  const fileKey = bookFileKey(session.user.id, id);
+    if (!bookcase) {
+      return errorResponse(404, "That bookcase could not be found.");
+    }
 
-  await saveStoredFile(fileKey, bytes);
+    let bytes: Uint8Array;
 
-  try {
-    await createBookForUser({
-      id,
-      fileKey,
-      pageCount,
-      fileSize: file.size,
-      userId: session.user.id,
-      bookcaseId: bookcase.id,
-      title: parsed.data.title,
-      author: parsed.data.author || null,
-      spineColor: parsed.data.spineColor,
-    });
-  } catch (error) {
-    await deleteStoredFile(fileKey);
-    throw error;
+    try {
+      bytes = await readStoredFile(pendingKey);
+    } catch {
+      return errorResponse(400, "We could not find your upload. Please choose the file again.");
+    }
+
+    if (bytes.byteLength > MAX_BOOK_FILE_BYTES) {
+      return errorResponse(413, fileTooLargeMessage(bytes.byteLength));
+    }
+
+    const usage = await getStorageUsage(userId);
+
+    if (!hasRoomFor(usage, bytes.byteLength)) {
+      return errorResponse(413, quotaExceededMessage(bytes.byteLength, usage));
+    }
+
+    if (!hasPdfSignature(bytes)) {
+      return errorResponse(400, "This file is not a PDF.");
+    }
+
+    let pageCount: number;
+
+    try {
+      ({ pageCount } = await readPdfInfo(bytes));
+    } catch {
+      return errorResponse(400, "We could not read this PDF. It may be damaged or protected with a password.");
+    }
+
+    const fileKey = bookFileKey(userId, uploadId);
+    await saveStoredFile(fileKey, bytes);
+
+    try {
+      await createBookForUser({
+        id: uploadId,
+        fileKey,
+        pageCount,
+        fileSize: bytes.byteLength,
+        userId,
+        bookcaseId: bookcase.id,
+        title,
+        author: author || null,
+        spineColor,
+      });
+    } catch (error) {
+      await deleteStoredFile(fileKey);
+      throw error;
+    }
+  } finally {
+    await deleteStoredFile(pendingKey);
   }
 
   revalidatePath("/library");
 
-  return Response.json({ id }, { status: 201 });
+  return Response.json({ id: uploadId }, { status: 201 });
 }

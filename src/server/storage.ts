@@ -5,7 +5,8 @@ import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } fro
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const STORAGE_ROOT = path.join(process.cwd(), "storage");
-const SIGNED_URL_TTL_SECONDS = 300;
+const READ_URL_TTL_SECONDS = 300;
+const UPLOAD_URL_TTL_SECONDS = 600;
 
 type StoredBytes = Uint8Array<ArrayBuffer>;
 
@@ -14,6 +15,7 @@ type StorageDriver = {
   read: (key: string) => Promise<StoredBytes>;
   remove: (key: string) => Promise<void>;
   signedUrl: (key: string, fileName: string) => Promise<string | null>;
+  uploadUrl: (key: string) => Promise<string | null>;
 };
 
 function contentTypeFor(key: string) {
@@ -47,6 +49,9 @@ const localDriver: StorageDriver = {
     await unlink(resolveLocalKey(key)).catch(() => undefined);
   },
   async signedUrl() {
+    return null;
+  },
+  async uploadUrl() {
     return null;
   },
 };
@@ -105,7 +110,18 @@ function createR2Driver(): StorageDriver {
           ResponseContentDisposition: inlineDisposition(fileName),
           ResponseCacheControl: "private, no-store",
         }),
-        { expiresIn: SIGNED_URL_TTL_SECONDS },
+        { expiresIn: READ_URL_TTL_SECONDS },
+      );
+    },
+    async uploadUrl(key) {
+      return getSignedUrl(
+        client,
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          ContentType: contentTypeFor(key),
+        }),
+        { expiresIn: UPLOAD_URL_TTL_SECONDS },
       );
     },
   };
@@ -114,12 +130,20 @@ function createR2Driver(): StorageDriver {
 let driver: StorageDriver | null = null;
 
 function storage() {
-  driver ??= process.env.STORAGE_DRIVER === "r2" ? createR2Driver() : localDriver;
+  driver ??= isRemoteStorage() ? createR2Driver() : localDriver;
   return driver;
+}
+
+export function isRemoteStorage() {
+  return process.env.STORAGE_DRIVER === "r2";
 }
 
 export function bookFileKey(userId: string, bookId: string) {
   return `books/${userId}/${bookId}.pdf`;
+}
+
+export function pendingUploadKey(userId: string, uploadId: string) {
+  return `pending/${userId}/${uploadId}.pdf`;
 }
 
 export async function saveStoredFile(key: string, bytes: Uint8Array) {
@@ -136,4 +160,8 @@ export async function deleteStoredFile(key: string) {
 
 export async function getStoredFileUrl(key: string, fileName: string) {
   return storage().signedUrl(key, fileName);
+}
+
+export async function getUploadUrl(key: string) {
+  return storage().uploadUrl(key);
 }
