@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
@@ -93,6 +94,18 @@ export function RegisterForm() {
       <Button type="submit" size="lg" className="mt-1.5 w-full" disabled={pending}>
         {pending ? "Building your library..." : "Create account"}
       </Button>
+
+      <p className="text-center text-[13px] leading-relaxed text-ink-soft">
+        By creating an account, you agree to our{" "}
+        <Link href="/terms" className="font-bold text-sage-700 underline underline-offset-2">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" className="font-bold text-sage-700 underline underline-offset-2">
+          Privacy Policy
+        </Link>
+        .
+      </p>
     </form>
   );
 }
