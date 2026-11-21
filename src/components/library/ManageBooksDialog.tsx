@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { FormAlert } from "@/components/ui/FormAlert";
 import { Modal } from "@/components/ui/Modal";
 import { readingProgress, type BookOnShelf } from "@/lib/books";
+import { closeLibraryDialog } from "@/lib/library-dialog";
 
 type ManageBooksDialogProps = {
   bookcaseName: string;
@@ -51,7 +52,7 @@ export function ManageBooksDialog({ bookcaseName, books }: ManageBooksDialogProp
       open
       title={`Books in ${bookcaseName}`}
       titleId="manage-books-title"
-      onClose={() => router.replace("/library", { scroll: false })}
+      onClose={closeLibraryDialog}
     >
       <div className="flex flex-col gap-4">
         <FormAlert message={error} />

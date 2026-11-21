@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { BookcaseMenu } from "@/components/library/BookcaseMenu";
 import { BookSpine } from "@/components/library/BookSpine";
+import { DialogLink } from "@/components/library/DialogLink";
 import { POT_COLORS, WOODS, type BookcaseSummary } from "@/lib/bookcases";
 import { arrangeOnShelves } from "@/lib/books";
 
@@ -65,13 +65,12 @@ export function Bookcase({ bookcase, index }: BookcaseProps) {
           <div className="absolute inset-x-6 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2 rounded-[1.125rem] border-[1.5px] border-ink bg-paper p-4.5 text-center">
             <strong className="font-display text-[17px] font-semibold text-ink-strong">This bookcase is still quiet</strong>
             <span className="text-[13px] leading-relaxed text-ink-soft">Shelve your first PDF book here.</span>
-            <Link
+            <DialogLink
               href={`/library?new=book&bookcase=${bookcase.id}`}
-              scroll={false}
               className="flex min-h-10 items-center rounded-full bg-sage-100 px-4 text-[13px] font-extrabold text-sage-700 hover:bg-sage-200"
             >
               Add a book
-            </Link>
+            </DialogLink>
           </div>
         )}
       </div>

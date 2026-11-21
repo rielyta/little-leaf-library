@@ -17,6 +17,7 @@ import {
   type SpineColor,
 } from "@/lib/books";
 import { cn } from "@/lib/cn";
+import { closeLibraryDialog } from "@/lib/library-dialog";
 import { readPdfInfo } from "@/lib/pdf-info";
 import {
   fileTooLargeMessage,
@@ -218,7 +219,7 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
       await putFile(ticket.url, selected.file, setUploadProgress);
 
       setStatus("shelving");
-      await postJson("/api/books", { ...parsed.data, uploadId: ticket.uploadId });
+      await postJson("/api/books", { ...parsed.data, uploadId: ticket.uploadId, pageCount: selected.pageCount });
     } catch (error) {
       const uploadError = error instanceof UploadError ? error : new UploadError(GENERIC_UPLOAD_ERROR);
       setErrors(uploadError.fieldErrors);
@@ -227,7 +228,7 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
       return;
     }
 
-    router.replace("/library", { scroll: false });
+    closeLibraryDialog();
     router.refresh();
   }
 
@@ -246,7 +247,7 @@ export function AddBookDialog({ open, bookcases, defaultBookcaseId }: AddBookDia
       open={open}
       title="Add a new book"
       titleId="add-book-title"
-      onClose={() => router.replace("/library", { scroll: false })}
+      onClose={closeLibraryDialog}
       className="w-[min(52rem,calc(100%-2rem))]"
     >
       {bookcases.length === 0 ? (

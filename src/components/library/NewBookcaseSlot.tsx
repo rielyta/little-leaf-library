@@ -1,11 +1,10 @@
-import Link from "next/link";
+import { DialogLink } from "@/components/library/DialogLink";
 import { cn } from "@/lib/cn";
 
 export function NewBookcaseSlot({ className, description }: { className?: string; description?: string }) {
   return (
-    <Link
+    <DialogLink
       href="/library?new=bookcase"
-      scroll={false}
       className={cn(
         "flex w-65 flex-none snap-start flex-col items-center justify-center gap-3 rounded-t-[1.375rem] rounded-b-lg border-[2.5px] border-dashed border-wood-500 bg-[#FBF1EC] text-ink transition-colors hover:bg-blush-50",
         className,
@@ -18,6 +17,6 @@ export function NewBookcaseSlot({ className, description }: { className?: string
       </span>
       <span className="font-display text-xl font-semibold">New bookcase</span>
       {description && <span className="px-7 text-center text-sm leading-normal text-ink-soft">{description}</span>}
-    </Link>
+    </DialogLink>
   );
 }

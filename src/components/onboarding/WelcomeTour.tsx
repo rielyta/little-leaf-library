@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { finishOnboarding } from "@/app/(app)/library/onboarding-actions";
 import { TourArt, type TourArtKind } from "@/components/onboarding/TourArt";
@@ -8,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { parseAvatar } from "@/lib/avatars";
 import { cn } from "@/lib/cn";
+import { openLibraryDialog } from "@/lib/library-dialog";
 import { formatBytes, MAX_BOOK_FILE_BYTES, STORAGE_QUOTA_BYTES } from "@/lib/storage-quota";
 
 type WelcomeTourProps = {
@@ -111,7 +111,6 @@ function buildSteps({ name, libraryName, avatar, hasBookcases }: WelcomeTourProp
 }
 
 export function WelcomeTour(props: WelcomeTourProps) {
-  const router = useRouter();
   const steps = buildSteps(props);
   const [index, setIndex] = useState(0);
   const [isDone, setIsDone] = useState(false);
@@ -131,11 +130,11 @@ export function WelcomeTour(props: WelcomeTourProps) {
     return finishOnboarding();
   }
 
-  async function complete() {
-    await finish();
+  function complete() {
+    void finish();
 
     if (!props.hasBookcases) {
-      router.replace("/library?new=bookcase", { scroll: false });
+      openLibraryDialog("/library?new=bookcase", { replace: true });
     }
   }
 
@@ -210,7 +209,7 @@ export function WelcomeTour(props: WelcomeTourProps) {
             )}
 
             {isLast ? (
-              <Button onClick={() => void complete()}>{props.hasBookcases ? "Start reading" : "Build my first bookcase"}</Button>
+              <Button onClick={complete}>{props.hasBookcases ? "Start reading" : "Build my first bookcase"}</Button>
             ) : (
               <Button onClick={() => goTo(index + 1)}>{isFirst ? "Show me around" : "Next"}</Button>
             )}

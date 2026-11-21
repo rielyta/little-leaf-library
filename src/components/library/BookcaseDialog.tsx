@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useActionState, useState } from "react";
 import { createBookcase, updateBookcase, type BookcaseFormState } from "@/app/(app)/library/actions";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +17,7 @@ import {
   type WoodKey,
 } from "@/lib/bookcases";
 import { cn } from "@/lib/cn";
+import { closeLibraryDialog } from "@/lib/library-dialog";
 
 const initialState: BookcaseFormState = {};
 
@@ -70,7 +70,6 @@ function ShelfIcon({ count }: { count: ShelfCount }) {
 }
 
 export function BookcaseDialog({ open, bookcase }: BookcaseDialogProps) {
-  const router = useRouter();
   const isEditing = Boolean(bookcase);
   const action = bookcase ? updateBookcase.bind(null, bookcase.id) : createBookcase;
   const savedShelves = bookcase && isShelfCount(bookcase.shelves) ? bookcase.shelves : DEFAULT_SHELVES;
@@ -85,7 +84,7 @@ export function BookcaseDialog({ open, bookcase }: BookcaseDialogProps) {
       open={open}
       title={isEditing ? "Edit bookcase" : "New bookcase"}
       titleId="bookcase-dialog-title"
-      onClose={() => router.replace("/library", { scroll: false })}
+      onClose={closeLibraryDialog}
     >
       <form action={formAction} className="flex flex-col gap-5">
         <FormAlert message={state.formError ?? null} />

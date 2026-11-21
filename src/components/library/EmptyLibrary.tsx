@@ -1,6 +1,7 @@
+import { DialogLink } from "@/components/library/DialogLink";
 import { NewBookcaseSlot } from "@/components/library/NewBookcaseSlot";
 import { RoomBackdrop } from "@/components/library/RoomBackdrop";
-import { ButtonLink } from "@/components/ui/ButtonLink";
+import { buttonClasses } from "@/components/ui/button-styles";
 
 export function EmptyLibrary({ name }: { name: string }) {
   return (
@@ -16,9 +17,9 @@ export function EmptyLibrary({ name }: { name: string }) {
           <p className="leading-relaxed text-ink-soft">
             Start by creating your first bookcase, like Novels or Classes. Then you can shelve your PDF books on it.
           </p>
-          <ButtonLink href="/library?new=bookcase" className="mt-1 self-start">
+          <DialogLink href="/library?new=bookcase" className={buttonClasses("primary", "md", "mt-1 self-start")}>
             Create my first bookcase
-          </ButtonLink>
+          </DialogLink>
         </div>
 
         <NewBookcaseSlot className="h-117.5" description="One bookcase for each category of books" />

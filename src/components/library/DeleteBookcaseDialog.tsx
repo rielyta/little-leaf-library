@@ -1,11 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useActionState, useState, type ReactNode } from "react";
 import { deleteBookcase, type DeleteBookcaseState } from "@/app/(app)/library/actions";
 import { FormAlert } from "@/components/ui/FormAlert";
 import { Modal, ModalCancelButton } from "@/components/ui/Modal";
 import { cn } from "@/lib/cn";
+import { closeLibraryDialog } from "@/lib/library-dialog";
 
 const initialState: DeleteBookcaseState = {};
 
@@ -53,7 +53,6 @@ function ChoiceCard({
 }
 
 export function DeleteBookcaseDialog({ bookcase, otherBookcases }: DeleteBookcaseDialogProps) {
-  const router = useRouter();
   const [state, formAction, pending] = useActionState(deleteBookcase.bind(null, bookcase.id), initialState);
 
   const canMove = otherBookcases.length > 0;
@@ -64,7 +63,7 @@ export function DeleteBookcaseDialog({ bookcase, otherBookcases }: DeleteBookcas
   const [targetId, setTargetId] = useState(otherBookcases[0]?.id ?? "");
 
   return (
-    <Modal open title="Delete bookcase" titleId="delete-bookcase-title" onClose={() => router.replace("/library", { scroll: false })}>
+    <Modal open title="Delete bookcase" titleId="delete-bookcase-title" onClose={closeLibraryDialog}>
       <form action={formAction} className="flex flex-col gap-5">
         <FormAlert message={state.formError ?? null} />
 

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { DialogLink } from "@/components/library/DialogLink";
 
 function Sprig({ flipped = false }: { flipped?: boolean }) {
   return (
@@ -12,9 +12,8 @@ function Sprig({ flipped = false }: { flipped?: boolean }) {
 
 export function LibrarySign({ name }: { name: string }) {
   return (
-    <Link
+    <DialogLink
       href="/library?rename=library"
-      scroll={false}
       aria-label={`${name}. Rename your library`}
       className="group pointer-events-auto flex max-w-[calc(100vw-2rem)] origin-top flex-col items-center transition-transform duration-300 hover:-rotate-1 focus-visible:outline-none"
     >
@@ -32,6 +31,6 @@ export function LibrarySign({ name }: { name: string }) {
       <span className="mt-1.5 text-[11px] font-extrabold text-ink-soft opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         Click to rename
       </span>
-    </Link>
+    </DialogLink>
   );
 }

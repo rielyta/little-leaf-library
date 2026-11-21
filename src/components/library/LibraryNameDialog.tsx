@@ -1,12 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useActionState, useState } from "react";
 import { updateLibraryName, type LibraryNameState } from "@/app/(app)/library/actions";
 import { Button } from "@/components/ui/Button";
 import { Modal, ModalCancelButton } from "@/components/ui/Modal";
 import { TextField } from "@/components/ui/TextField";
 import { LIBRARY_NAME_MAX_LENGTH } from "@/lib/library";
+import { closeLibraryDialog } from "@/lib/library-dialog";
 
 const initialState: LibraryNameState = {};
 
@@ -16,12 +16,11 @@ type LibraryNameDialogProps = {
 };
 
 export function LibraryNameDialog({ savedName, defaultName }: LibraryNameDialogProps) {
-  const router = useRouter();
   const [state, formAction, pending] = useActionState(updateLibraryName, initialState);
   const [value, setValue] = useState(savedName ?? "");
 
   return (
-    <Modal open title="Name your library" titleId="library-name-title" onClose={() => router.replace("/library", { scroll: false })}>
+    <Modal open title="Name your library" titleId="library-name-title" onClose={closeLibraryDialog}>
       <form action={formAction} className="flex flex-col gap-5">
         <div aria-hidden="true" className="flex justify-center rounded-[1.25rem] bg-blush-100 px-4 py-7">
           <span className="max-w-full rounded-[1.25rem] border-[1.5px] border-ink bg-wood-300 p-1.5">
