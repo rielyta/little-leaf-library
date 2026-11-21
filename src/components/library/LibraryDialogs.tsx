@@ -1,13 +1,14 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AddBookDialog } from "@/components/library/AddBookDialog";
 import { BookcaseDialog } from "@/components/library/BookcaseDialog";
 import { DeleteBookcaseDialog } from "@/components/library/DeleteBookcaseDialog";
 import { LibraryNameDialog } from "@/components/library/LibraryNameDialog";
 import { ManageBooksDialog } from "@/components/library/ManageBooksDialog";
 import { WelcomeTour } from "@/components/onboarding/WelcomeTour";
+import { keepOnlyCachedBooks } from "@/lib/book-cache";
 import type { BookcaseSummary } from "@/lib/bookcases";
 
 const DIALOG_PARAMS = ["new", "edit", "bookcase", "remove", "manage", "rename"];
@@ -34,6 +35,11 @@ export function LibraryDialogs({ bookcases, userName, libraryName, savedName, de
   const isAddingBook = params.get("new") === "book";
   const defaultBookcaseId = params.get("bookcase") ?? undefined;
   const bookcaseOptions = bookcases.map(({ id, name }) => ({ id, name }));
+  const shelvedBookIds = bookcases.flatMap((bookcase) => bookcase.books.map((book) => book.id)).join(",");
+
+  useEffect(() => {
+    void keepOnlyCachedBooks(shelvedBookIds ? shelvedBookIds.split(",") : []);
+  }, [shelvedBookIds]);
 
   return (
     <>

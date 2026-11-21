@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ClearBookCache } from "@/components/auth/ClearBookCache";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 
 export const metadata: Metadata = {
@@ -27,6 +28,7 @@ function WavingLeaf() {
 export default function GoodbyePage() {
   return (
     <section className="flex flex-col gap-5">
+      <ClearBookCache />
       <WavingLeaf />
 
       <header className="flex flex-col gap-1.5">
