@@ -52,9 +52,20 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
 
       <p className="text-sm leading-relaxed text-ink-soft">The link works for 24 hours. If it does not show up, check your spam folder too.</p>
 
-      <Link href="/login" className="text-sm font-extrabold text-sage-600 hover:text-sage-700">
-        Back to log in
-      </Link>
+      <div className="flex flex-col gap-1 rounded-2xl border-[1.5px] border-line bg-white px-4 py-3.5 text-sm leading-relaxed text-ink-soft">
+        <strong className="text-ink-strong">Already have an account with this email?</strong>
+        <span>
+          We only send this link to new or unverified accounts. You can{" "}
+          <Link href="/login" className="font-extrabold text-sage-600 hover:text-sage-700">
+            log in
+          </Link>{" "}
+          instead, or{" "}
+          <Link href="/forgot-password" className="font-extrabold text-sage-600 hover:text-sage-700">
+            reset your password
+          </Link>{" "}
+          if you forgot it.
+        </span>
+      </div>
     </section>
   );
 }
