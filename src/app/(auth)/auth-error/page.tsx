@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { GoogleButton } from "@/components/auth/GoogleButton";
 import { ButtonLink } from "@/components/ui/ButtonLink";
+import { redirectIfSignedIn } from "@/server/session";
 
 export const metadata: Metadata = {
   title: "Sign in problem",
@@ -13,6 +15,8 @@ type ErrorCopy = {
   title: string;
   body: string;
 };
+
+const RESTART_ERRORS = new Set(["state_mismatch", "state_not_found", "please_restart_the_process"]);
 
 const ERROR_COPY: Record<string, ErrorCopy> = {
   account_not_linked: {
@@ -29,6 +33,11 @@ const ERROR_COPY: Record<string, ErrorCopy> = {
   },
 };
 
+const RESTART_COPY: ErrorCopy = {
+  title: "Let's try that again",
+  body: "Your Google sign in was interrupted, took a little too long, or the page was opened twice. Nothing is wrong with your account. Please start again below.",
+};
+
 const FALLBACK_COPY: ErrorCopy = {
   title: "We could not sign you in",
   body: "Something went wrong while talking to Google. Please try again in a moment.",
@@ -36,7 +45,13 @@ const FALLBACK_COPY: ErrorCopy = {
 
 export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps) {
   const { error } = await searchParams;
-  const copy = (error && ERROR_COPY[error]) || FALLBACK_COPY;
+  const needsRestart = Boolean(error && RESTART_ERRORS.has(error));
+
+  if (needsRestart) {
+    await redirectIfSignedIn();
+  }
+
+  const copy = needsRestart ? RESTART_COPY : (error && ERROR_COPY[error]) || FALLBACK_COPY;
 
   return (
     <div className="flex flex-col gap-5">
@@ -45,14 +60,23 @@ export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps
         <p className="leading-relaxed text-ink-soft">{copy.body}</p>
       </div>
 
-      <div className="flex flex-wrap gap-2.5">
-        <ButtonLink href="/login">Back to log in</ButtonLink>
-        {error === "account_not_linked" && (
-          <ButtonLink href="/forgot-password" variant="plain">
-            Forgot password
+      {needsRestart ? (
+        <div className="flex max-w-sm flex-col gap-3">
+          <GoogleButton />
+          <ButtonLink href="/login" variant="plain">
+            Back to log in
           </ButtonLink>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2.5">
+          <ButtonLink href="/login">Back to log in</ButtonLink>
+          {error === "account_not_linked" && (
+            <ButtonLink href="/forgot-password" variant="plain">
+              Forgot password
+            </ButtonLink>
+          )}
+        </div>
+      )}
     </div>
   );
 }
